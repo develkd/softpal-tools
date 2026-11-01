@@ -67,6 +67,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -88,6 +89,22 @@ fun TerminScannerApp(viewModel: MainViewModel) {
             is Screen.Failure -> FailureScreen(screen.message, onBack = viewModel::reset)
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Branding
+// ---------------------------------------------------------------------------------------------
+
+/** softpal-Wortmarke, passend zum Theme eingefärbt (schwarz im Light Mode, weiß im Dark Mode). */
+@Composable
+private fun SoftpalLogo(modifier: Modifier = Modifier, height: Dp = 36.dp) {
+    Icon(
+        painter = painterResource(R.drawable.softpal_logo),
+        contentDescription = stringResource(R.string.brand_name),
+        tint = MaterialTheme.colorScheme.onBackground,
+        // Seitenverhältnis des Logos: 264 × 56
+        modifier = modifier.size(width = height * (264f / 56f), height = height),
+    )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -115,12 +132,9 @@ private fun StartScreen(onImage: (Uri) -> Unit) {
             .padding(PaddingValues(horizontal = 24.dp, vertical = 32.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_launcher_foreground),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+        SoftpalLogo(
             modifier = Modifier
-                .size(96.dp)
+                .padding(top = 8.dp, bottom = 16.dp)
                 .align(Alignment.CenterHorizontally),
         )
         Text(
@@ -226,6 +240,16 @@ private fun ReviewScreen(screen: Screen.Review, state: UiState, viewModel: MainV
                     IconButton(onClick = viewModel::reset) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
+                },
+                actions = {
+                    Icon(
+                        painter = painterResource(R.drawable.softpal_mark),
+                        contentDescription = stringResource(R.string.brand_name),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .size(width = 36.dp, height = 20.dp),
+                    )
                 },
             )
         },

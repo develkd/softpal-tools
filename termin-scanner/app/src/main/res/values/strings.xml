@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Termin-Scanner</string>
+    <string name="brand_name">softpal</string>
     <string name="share_target_label">Termin erkennen</string>
 
     <!-- Start -->
