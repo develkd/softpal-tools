@@ -1,0 +1,44 @@
+name: Android Termin-Scanner
+
+on:
+  push:
+    paths:
+      - 'termin-scanner/**'
+      - '.github/workflows/termin-scanner.yml'
+  pull_request:
+    paths:
+      - 'termin-scanner/**'
+      - '.github/workflows/termin-scanner.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: termin-scanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit-Tests
+        run: ./gradlew --no-daemon :extraction:test :app:testDebugUnitTest
+      - name: Debug-APK bauen
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: APK hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: termin-scanner-debug-apk
+          path: termin-scanner/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Testberichte hochladen
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            termin-scanner/extraction/build/reports/tests
+            termin-scanner/app/build/reports/tests

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Termin-Scanner</string>
+    <string name="share_target_label">Termin erkennen</string>
+
+    <!-- Start -->
+    <string name="start_title">Termine aus Dokumenten</string>
+    <string name="start_intro">Fotografiere einen Brief, eine Einladung oder einen Terminzettel. Die App erkennt Datum, Uhrzeit, Titel und Ort und zeigt dir alles zur Prüfung an. Erst nach deiner Bestätigung wird etwas in den Kalender eingetragen.</string>
+    <string name="start_take_photo">Dokument fotografieren</string>
+    <string name="start_pick_image">Bild aus Galerie wählen</string>
+    <string name="start_privacy">Die Texterkennung läuft komplett auf deinem Handy. Das Foto wird nicht hochgeladen.</string>
+    <string name="start_tips_title">Tipps für gute Ergebnisse</string>
+    <string name="start_tips">• Dokument gerade und vollständig aufnehmen\n• Auf gute Beleuchtung achten, keine Schatten\n• Du kannst Bilder auch aus anderen Apps über „Teilen“ an den Termin-Scanner senden</string>
+    <string name="error_no_camera">Keine Kamera-App gefunden.</string>
+
+    <!-- Verarbeitung -->
+    <string name="processing">Dokument wird gelesen …</string>
+
+    <!-- Prüfen -->
+    <string name="review_title">Termine prüfen</string>
+    <string name="review_found_one">1 möglicher Termin erkannt. Bitte prüfen und bei Bedarf korrigieren.</string>
+    <string name="review_found_many">%1$d mögliche Termine erkannt. Wähle aus, was eingetragen werden soll.</string>
+    <string name="review_none_title">Kein Termin erkannt</string>
+    <string name="review_none_text">Im Dokument wurde kein Datum gefunden. Du kannst einen Termin manuell anlegen oder ein neues Foto aufnehmen.</string>
+    <string name="review_add">Termin manuell hinzufügen</string>
+    <string name="review_recognized_text">Erkannter Text</string>
+    <string name="review_show">Anzeigen</string>
+    <string name="review_hide">Ausblenden</string>
+    <string name="review_submit">Eintragen (%1$d)</string>
+    <string name="review_submit_app">Über Kalender-App eintragen (%1$d)</string>
+    <string name="review_title_missing">Bitte bei allen ausgewählten Terminen einen Titel eingeben.</string>
+    <string name="back">Zurück</string>
+
+    <!-- Kalender -->
+    <string name="calendar_target">Eintragen in</string>
+    <string name="calendar_permission_title">Zugriff auf den Kalender</string>
+    <string name="calendar_permission_text">Damit die App Termine direkt in deinen Google Kalender bzw. Handy-Kalender eintragen kann, braucht sie die Kalender-Berechtigung. Ohne Berechtigung öffnet sich stattdessen deine Kalender-App mit dem vorausgefüllten Termin.</string>
+    <string name="calendar_permission_grant">Kalenderzugriff erlauben</string>
+    <string name="calendar_none">Kein beschreibbarer Kalender gefunden. Füge in den Android-Einstellungen ein Google-Konto hinzu oder trage über die Kalender-App ein.</string>
+
+    <!-- Termin-Karte -->
+    <string name="draft_title">Titel</string>
+    <string name="draft_location">Ort</string>
+    <string name="draft_notes">Notiz</string>
+    <string name="draft_all_day">Ganztägig</string>
+    <string name="draft_start">Beginn %1$s</string>
+    <string name="draft_end">Ende %1$s</string>
+    <string name="draft_remove">Entfernen</string>
+    <string name="draft_select">Termin auswählen</string>
+    <string name="draft_deadline">Frist</string>
+    <string name="confidence_high">Sicher erkannt</string>
+    <string name="confidence_medium">Wahrscheinlich</string>
+    <string name="confidence_low">Unsicher – bitte prüfen</string>
+    <string name="reminder_none">Keine Erinnerung</string>
+    <string name="reminder_minutes">%1$d Minuten vorher</string>
+    <string name="reminder_hour">1 Stunde vorher</string>
+    <string name="reminder_day">1 Tag vorher</string>
+    <string name="reminder_day_before_9">Am Vortag um 9:00 Uhr</string>
+    <string name="reminder_week_before_9">1 Woche vorher um 9:00 Uhr</string>
+
+    <!-- Bestätigung -->
+    <string name="confirm_title">In den Kalender eintragen?</string>
+    <string name="confirm_text">Folgendes wird in „%1$s“ eingetragen:</string>
+    <string name="confirm_text_app">Folgendes wird an deine Kalender-App übergeben. Dort jeweils mit „Speichern“ bestätigen:</string>
+    <string name="confirm_yes">Ja, eintragen</string>
+    <string name="confirm_no">Abbrechen</string>
+    <string name="all_day_suffix">ganztägig</string>
+    <string name="time_range">%1$s – %2$s Uhr</string>
+
+    <!-- Ergebnis -->
+    <string name="done_title">Fertig</string>
+    <string name="done_saved">Eingetragen</string>
+    <string name="done_duplicate">War schon im Kalender – nicht doppelt eingetragen</string>
+    <string name="done_failed">Fehler: %1$s</string>
+    <string name="done_open">Im Kalender öffnen</string>
+    <string name="done_again">Weiteres Dokument scannen</string>
+
+    <!-- Fehler -->
+    <string name="failure_title">Das hat nicht geklappt</string>
+    <string name="failure_text">Das Bild konnte nicht gelesen werden (%1$s). Bitte versuche es mit einem neuen Foto.</string>
+    <string name="failure_retry">Zurück zum Start</string>
+</resources>
