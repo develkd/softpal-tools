@@ -36,7 +36,7 @@ function anzeigen(st) {
   const laeuft = Boolean(st.laeuft);
   const andererTab = laeuft && aktiverTab && st.tabId != null && st.tabId !== aktiverTab.id;
 
-  $('punkt').className = `punkt${laeuft ? (st.pausiert ? ' pause' : ' an') : ''}`;
+  $('punkt').className = `punkt${laeuft ? (st.pausiert ? ' pause' : st.wartetAufTon ? ' wartet' : ' an') : ''}`;
   if (laeuft) {
     $('zeit').textContent = zeitText(st.sekunden);
     $('groesse').textContent = groesseText(st.bytes);
@@ -72,14 +72,17 @@ function automatikAnzeigen(st) {
   if (!beschaeftigt) kasten.checked = Boolean(st.automatik && fuerDiesenTab);
   let text;
   if (st.automatikVerfuegbar === 'alle') {
-    text = 'in allen Tabs: startet, sobald Ton läuft, endet nach Stille';
+    text = 'in allen Tabs: startet bei Ton, neue Datei nach jeder Stille';
   } else if (st.automatik && !fuerDiesenTab) {
     text = 'ist für einen anderen Tab aktiv – hier anhaken, um zu diesem Tab zu wechseln';
   } else {
-    text = 'in diesem Tab: startet, sobald Ton läuft, endet nach Stille';
+    text = 'in diesem Tab: startet bei Ton, neue Datei nach jeder Stille';
   }
   $('automatik-text').textContent = text;
-  if (!st.laeuft && st.letzteMeldung && !$('hinweis').classList.contains('fehler')
+  if (st.laeuft && st.wartetAufTon && !$('hinweis').classList.contains('fehler')) {
+    hinweis(st.letzteMeldung && st.letzteMeldung.includes('wartet auf Ton')
+      ? st.letzteMeldung : 'Automatik bereit – wartet auf Ton …');
+  } else if (!st.laeuft && st.letzteMeldung && !$('hinweis').classList.contains('fehler')
       && !$('hinweis').textContent.startsWith('Gespeichert')) {
     hinweis(st.letzteMeldung);
   }
@@ -139,12 +142,30 @@ async function pauseUmschalten() {
   }
 }
 
+/** Zahlenfeld (Komma oder Punkt) mit Untergrenze speichern. */
+function zahlFeld(id, schluessel, minimum) {
+  const feld = $(id);
+  // beim Tippen nur speichern, erst beim Verlassen des Feldes sichtbar korrigieren
+  const speichern = (korrigieren) => {
+    const wert = Number(String(feld.value).replace(',', '.'));
+    if (!Number.isFinite(wert) || feld.value === '') return;
+    const begrenzt = Math.max(minimum, Math.min(600, wert));
+    if (korrigieren && begrenzt !== wert) feld.value = String(begrenzt);
+    api.storage.local.set({ [schluessel]: begrenzt });
+  };
+  feld.addEventListener('input', () => speichern(false));
+  feld.addEventListener('change', () => speichern(true));
+}
+
 async function einstellungenLaden() {
-  const { bitrate = 192, fragen = false, nachStille = 5 } = await api.storage.local.get(['bitrate', 'fragen', 'nachStille']);
+  const { bitrate = 192, fragen = false, nachStille = 5, mindestTon = 3 } =
+    await api.storage.local.get(['bitrate', 'fragen', 'nachStille', 'mindestTon']);
   $('bitrate').value = String(bitrate);
   $('fragen').checked = Boolean(fragen);
   $('nach-stille').value = String(nachStille);
-  $('nach-stille').addEventListener('change', () => api.storage.local.set({ nachStille: Number($('nach-stille').value) }));
+  $('mindest-ton').value = String(mindestTon);
+  zahlFeld('nach-stille', 'nachStille', 0.5);
+  zahlFeld('mindest-ton', 'mindestTon', 0);
   $('bitrate').addEventListener('change', () => api.storage.local.set({ bitrate: Number($('bitrate').value) }));
   $('fragen').addEventListener('change', () => api.storage.local.set({ fragen: $('fragen').checked }));
 }

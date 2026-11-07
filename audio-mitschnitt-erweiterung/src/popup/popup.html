@@ -31,7 +31,7 @@
 
 <label class="automatik" for="automatik">
   <input type="checkbox" id="automatik">
-  <span><strong>Automatisch aufnehmen</strong><br><span class="klein" id="automatik-text">startet, sobald Ton läuft, und endet nach Stille</span></span>
+  <span><strong>Automatisch aufnehmen</strong><br><span class="klein" id="automatik-text">startet bei Ton, neue Datei nach jeder Stille</span></span>
 </label>
 
 <p class="hinweis" id="hinweis" role="status"></p>
@@ -48,15 +48,13 @@
       <option value="320">320 kbit/s</option>
     </select>
   </label>
-  <label>Automatik: Ende nach Stille von
-    <select id="nach-stille">
-      <option value="3">3 s</option>
-      <option value="5" selected>5 s</option>
-      <option value="10">10 s</option>
-      <option value="30">30 s</option>
-      <option value="60">60 s</option>
-    </select>
+  <label>Automatik: neue Datei nach Stille von
+    <span class="zahl"><input type="number" id="nach-stille" min="0.5" max="600" step="0.5" value="5" inputmode="decimal"> s</span>
   </label>
+  <label>Automatik: Aufnahmen verwerfen, kürzer als
+    <span class="zahl"><input type="number" id="mindest-ton" min="0" max="600" step="0.5" value="3" inputmode="decimal"> s</span>
+  </label>
+  <p class="klein" id="zahl-hinweis">Stille ab 0,5 s · 0 = nichts verwerfen</p>
   <label class="haken"><input type="checkbox" id="fragen"> Speicherort jedes Mal fragen</label>
   <p class="klein">Sonst landen die Dateien unter <code>Downloads/Mitschnitte/</code>.</p>
 </details>

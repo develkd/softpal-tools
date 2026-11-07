@@ -36,8 +36,19 @@ async function anOffscreen(nachricht) {
   return chrome.runtime.sendMessage({ ...nachricht, ziel: 'offscreen' });
 }
 
+function zahl(wert, standard, minimum) {
+  const n = Number(wert);
+  return Number.isFinite(n) && wert !== '' && wert != null ? Math.max(minimum, n) : standard;
+}
+
+async function autoEinstellungen() {
+  const { nachStille, mindestTon } = await chrome.storage.local.get(['nachStille', 'mindestTon']);
+  return { nachStille: zahl(nachStille, 5, 0.5), mindestTon: zahl(mindestTon, 3, 0) };
+}
+
+/** true: REC · 'wartet': Automatik wartet auf Ton · false: AUTO bzw. leer */
 function abzeichen(aufnahme) {
-  if (aufnahme) {
+  if (aufnahme === true) {
     chrome.action.setBadgeText({ text: 'REC' });
     chrome.action.setBadgeBackgroundColor({ color: '#c62828' });
     return;
@@ -58,13 +69,12 @@ async function starten({ tabId, bitrate, titel, automatisch = false }) {
     throw new Error(uebersetzen(fehler));
   }
   await offscreenSicherstellen();
-  const { nachStille = 5 } = await chrome.storage.local.get('nachStille');
   const antwort = await chrome.runtime.sendMessage({
     ziel: 'offscreen', typ: 'starten', streamId, tabId, bitrate, titel,
-    automatik: automatisch ? { nachStille: Number(nachStille) || 5 } : null,
+    automatik: automatisch ? await autoEinstellungen() : null,
   });
   if (antwort && antwort.fehler) throw new Error(antwort.fehler);
-  abzeichen(true);
+  abzeichen(automatisch ? 'wartet' : true);
   return antwort;
 }
 
@@ -104,6 +114,11 @@ async function automatischStarten(tabId, titel) {
 }
 
 async function automatikSetzen({ an, tabId, titel }) {
+  if (!an || tabId !== (await automatikZustand()).autoTabId) {
+    // laufende automatische Aufnahme abschließen (speichern, wenn lang genug)
+    const st = await anOffscreen({ typ: 'status' });
+    if (st && st.laeuft && st.automatisch) await anOffscreen({ typ: 'automatikAus' });
+  }
   await chrome.storage.local.set({ automatik: Boolean(an) });
   await chrome.storage.session.set({ autoTabId: an ? tabId : null, gesperrt: null,
     letzteMeldung: an ? 'Automatik an – wartet auf Ton in diesem Tab' : '' });
@@ -123,6 +138,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, aenderung, tab) => {
     return;
   }
   await automatischStarten(tabId, tab && tab.title);
+});
+
+// geänderte Werte gelten sofort auch für die laufende Aufnahme
+chrome.storage.onChanged.addListener(async (aenderung, bereich) => {
+  if (bereich !== 'local' || !('nachStille' in aenderung || 'mindestTon' in aenderung)) return;
+  await anOffscreen({ typ: 'einstellungen', ...(await autoEinstellungen()) });
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
@@ -183,19 +204,25 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         abzeichen(false);
         return antwort;
       }
+      case 'ton': // vom Offscreen-Dokument: automatische Aufnahme hat Ton
+        abzeichen(true);
+        return {};
       case 'fertig': // vom Offscreen-Dokument: Datei liegt bereit
-        abzeichen(false);
+        // weiter: Automatik teilt nur die Datei, Tab-Aufnahme läuft weiter
+        abzeichen(nachricht.weiter ? 'wartet' : false);
         if (nachricht.automatisch) {
-          await chrome.storage.session.set({ gesperrt: nachricht.tabId });
-          await meldung(`Automatisch gespeichert: ${nachricht.dateiname}`);
+          await meldung(`Automatisch gespeichert: ${nachricht.dateiname}${nachricht.weiter ? ' – wartet auf Ton' : ''}`);
         }
         return { downloadId: await speichern(nachricht) };
-      case 'verworfen': // vom Offscreen-Dokument: automatische Aufnahme zu kurz
-        abzeichen(false);
-        await chrome.storage.session.set({ gesperrt: nachricht.tabId });
-        await meldung(`Kurzer Ton (unter ${nachricht.mindest} s) verworfen`);
-        // erst nach der Antwort schließen
-        setTimeout(() => chrome.offscreen.closeDocument().catch(() => {}), 200);
+      case 'verworfen': // vom Offscreen-Dokument: automatische Aufnahme ohne/zu kurzer Ton
+        abzeichen(nachricht.weiter ? 'wartet' : false);
+        if (nachricht.mitTon) {
+          await meldung(`Kurzer Ton (unter ${nachricht.mindest} s) verworfen${nachricht.weiter ? ' – wartet auf Ton' : ''}`);
+        }
+        if (!nachricht.weiter) {
+          // Aufnahme ganz beendet: Dokument nach der Antwort schließen
+          setTimeout(() => chrome.offscreen.closeDocument().catch(() => {}), 200);
+        }
         return {};
       default:
         throw new Error(`Unbekannte Nachricht: ${nachricht.typ}`);

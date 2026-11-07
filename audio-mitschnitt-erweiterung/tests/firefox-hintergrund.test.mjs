@@ -143,8 +143,14 @@ async function tonLiefern(abgriff, sekunden, ton = true) {
   }
 }
 
-test('Automatik: startet bei Ton, speichert nach Stille ohne Stille am Ende', async () => {
-  await einstellen({ automatik: true, nachStille: 0.6 });
+async function mp3Dauer(download) {
+  const { mp3Frames } = await import('./hilfen.mjs');
+  const mp3 = Buffer.from(await blobs.get(download.url).arrayBuffer());
+  return (mp3Frames(mp3).length * 1152) / 44100;
+}
+
+test('Automatik: startet bei Ton, teilt nach 0,5 s Stille in Dateien, nächster Ton sofort', async () => {
+  await einstellen({ automatik: true, nachStille: 0.5, mindestTon: 1 });
   const vorherAbgriffe = abgriffe.length;
   const vorherDownloads = downloads.length;
   hoerbar(true);
@@ -155,46 +161,65 @@ test('Automatik: startet bei Ton, speichert nach Stille ohne Stille am Ende', as
   assert.equal(st.laeuft, true);
   assert.equal(st.automatisch, true);
 
-  await tonLiefern(abgriff, 3.5);
-  await tonLiefern(abgriff, 1.5, false); // Stille -> beendet nach 0,6 s
-  await warten(200);
+  await tonLiefern(abgriff, 2); // Titel 1
+  await tonLiefern(abgriff, 1, false); // 1 s Pause -> Datei 1 fertig
   st = await nachricht({ typ: 'status' });
-  assert.equal(st.laeuft, false, 'nicht automatisch beendet');
-  assert.match(st.letzteMeldung, /Automatisch gespeichert/);
-  assert.equal(downloads.length, vorherDownloads + 1);
-  const mp3 = Buffer.from(await blobs.get(downloads.at(-1).url).arrayBuffer());
-  const { mp3Frames } = await import('./hilfen.mjs');
-  const dauer = (mp3Frames(mp3).length * 1152) / 44100;
-  assert.ok(dauer > 3.0 && dauer < 4.3, `Dauer ${dauer} (Stille am Ende nicht entfernt?)`);
+  assert.equal(downloads.length, vorherDownloads + 1, 'Datei 1 nicht gespeichert');
+  assert.equal(st.laeuft, true, 'Aufnahme sollte bereit bleiben');
+  assert.equal(st.wartetAufTon, true);
+  assert.match(st.letzteMeldung, /Automatisch gespeichert: .* – wartet auf Ton/);
+  assert.equal(abgriffe.length, vorherAbgriffe + 1, 'Abgriff sollte verbunden bleiben');
+  assert.deepEqual(abgriff.vonHintergrund, []);
 
-  // derselbe Tab ist weiter "hörbar": nicht sofort neu starten
-  hoerbar(true);
-  await warten(50);
-  assert.equal((await nachricht({ typ: 'status' })).laeuft, false);
+  await tonLiefern(abgriff, 2); // Titel 2 über denselben Abgriff
+  await tonLiefern(abgriff, 1, false);
+  assert.equal(downloads.length, vorherDownloads + 2, 'Datei 2 nicht gespeichert');
+
+  const d1 = await mp3Dauer(downloads.at(-2));
+  const d2 = await mp3Dauer(downloads.at(-1));
+  assert.ok(d1 > 1.7 && d1 < 2.6, `Datei 1: ${d1} s`);
+  assert.ok(d2 > 1.7 && d2 < 2.6, `Datei 2: ${d2} s (Stille davor/danach nicht entfernt?)`);
 });
 
-test('Automatik: kurzer Ton wird verworfen; nach Stille startet der Tab wieder', async () => {
-  const vorherDownloads = downloads.length;
-  hoerbar(false); // Sperre aufheben
-  hoerbar(true);
-  await warten(50);
+test('Automatik: zu kurzer Ton wird verworfen, Aufnahme wartet weiter', async () => {
+  await einstellen({ mindestTon: 3 });
   const abgriff = abgriffe.at(-1);
-  assert.equal((await nachricht({ typ: 'status' })).laeuft, true);
+  const vorherDownloads = downloads.length;
   await tonLiefern(abgriff, 1);
-  await tonLiefern(abgriff, 1.5, false);
-  await warten(200);
+  await tonLiefern(abgriff, 1, false);
+  const st = await nachricht({ typ: 'status' });
+  assert.equal(downloads.length, vorherDownloads, 'kurze Aufnahme wurde gespeichert');
+  assert.match(st.letzteMeldung, /verworfen/);
+  assert.equal(st.laeuft, true);
+  assert.equal(st.wartetAufTon, true);
+});
+
+test('Automatik aus: wartende Aufnahme endet ohne leere Datei; hörbarer Tab startet nichts', async () => {
+  const vorherDownloads = downloads.length;
+  await einstellen({ automatik: false });
   const st = await nachricht({ typ: 'status' });
   assert.equal(st.laeuft, false);
-  assert.match(st.letzteMeldung, /verworfen/);
-  assert.equal(downloads.length, vorherDownloads, 'kurze Aufnahme wurde gespeichert');
-});
-
-test('Automatik aus: hörbarer Tab startet nichts', async () => {
-  await einstellen({ automatik: false });
+  assert.equal(downloads.length, vorherDownloads, 'leere Datei gespeichert');
   const vorher = abgriffe.length;
   hoerbar(false);
   hoerbar(true);
   await warten(50);
   assert.equal(abgriffe.length, vorher);
   assert.equal((await nachricht({ typ: 'status' })).automatik, false);
+});
+
+test('Einstellung "nachStille" wird auf mindestens 0,5 s begrenzt', async () => {
+  await einstellen({ automatik: true, nachStille: 0.1 });
+  hoerbar(false);
+  hoerbar(true);
+  await warten(50);
+  const abgriff = abgriffe.at(-1);
+  const vorherDownloads = downloads.length;
+  await einstellen({ mindestTon: 0 });
+  await tonLiefern(abgriff, 1);
+  await tonLiefern(abgriff, 0.5, false); // 0,5 s: wegen Grenze 0,5 s + Latenz noch nicht fertig
+  assert.equal(downloads.length, vorherDownloads, 'Grenze 0,5 s nicht beachtet');
+  await tonLiefern(abgriff, 0.6, false);
+  assert.equal(downloads.length, vorherDownloads + 1);
+  await einstellen({ automatik: false });
 });

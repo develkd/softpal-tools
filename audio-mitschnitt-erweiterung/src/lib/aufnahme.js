@@ -79,7 +79,9 @@
      * @param {object} [o.automatik]  Automatik-Modus: {nachStille: Sekunden,
      *   schwelleDb = -60}. Stille wird zurückgehalten und nur geschrieben, wenn
      *   danach wieder Ton kommt; nach `nachStille` Sekunden ruft die Aufnahme
-     *   einmal `beiStille()` auf (dort beenden).
+     *   einmal `beiStille()` auf (dort beenden). Solange noch kein Ton kam,
+     *   wird nur ein kurzer Vorlauf behalten und `beiStille` nicht ausgelöst
+     *   ("wartet auf Ton"); beim ersten Ton kommt einmal `beiErstemTon()`.
      */
     constructor({ bitrate = 192, sampleRate = 48000, titel = '', jetzt, lame, taktMs = 100, automatik = null } = {}) {
       this.sampleRate = sampleRate;
@@ -97,6 +99,7 @@
       this._timer = null;
       this.automatik = automatik ? { schwelleDb: -60, ...automatik } : null;
       this.beiStille = null;
+      this.beiErstemTon = null;
       this._stille = []; // zurückgehaltene stille Blöcke [links, rechts]
       this._stilleFrames = 0;
       this._tonFrames = 0;
@@ -116,6 +119,14 @@
       if (pegelDb(links, rechts) < this.automatik.schwelleDb) {
         this._stille.push([links, rechts]);
         this._stilleFrames += links.length;
+        if (this._tonFrames === 0) {
+          // wartet auf Ton: nur kurzen Vorlauf (0,2 s) behalten
+          const vorlauf = 0.2 * this.sampleRate;
+          while (this._stille.length > 1 && this._stilleFrames - this._stille[0][0].length >= vorlauf) {
+            this._stilleFrames -= this._stille.shift()[0].length;
+          }
+          return;
+        }
         if (!this._stilleGemeldet && this._stilleFrames >= this.automatik.nachStille * this.sampleRate) {
           this._stilleGemeldet = true;
           if (this.beiStille) setTimeout(() => this.beiStille(), 0);
@@ -123,10 +134,12 @@
         // nicht unbegrenzt zurückhalten (z. B. wenn niemand beendet)
         if (this._stilleFrames > 120 * this.sampleRate) this._stilleSchreiben();
       } else {
+        const erster = this._tonFrames === 0;
         this._stilleSchreiben();
         this._stilleGemeldet = false;
         this.kodierer.kodieren(links, rechts);
         this._tonFrames += links.length;
+        if (erster && this.beiErstemTon) setTimeout(() => this.beiErstemTon(), 0);
       }
     }
 
@@ -218,6 +231,8 @@
         dateiname: this.dateiname,
         info: this.info,
         automatisch: Boolean(this.automatik),
+        wartetAufTon: Boolean(this.automatik) && this._tonFrames === 0,
+        tonSekunden: this.tonSekunden,
       };
     }
   }

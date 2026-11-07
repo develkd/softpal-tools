@@ -17,13 +17,16 @@ const offeneDownloads = new Map();
 const diag = { eingefuegt: '', abgewiesen: [], frames: new Map() }; // id -> {diag, pcm}
 
 // Automatik: startet, sobald ein Tab Ton abspielt; endet nach Stille
-const MINDEST_TON_SEKUNDEN = 3; // kürzere automatische Aufnahmen verwerfen
-const einst = { automatik: false, nachStille: 5, bitrate: 192 };
+// nachStille: Datei nach so viel Stille beenden; mindestTon: kürzere verwerfen
+const einst = { automatik: false, nachStille: 5, mindestTon: 3, bitrate: 192 };
 const gesperrt = new Set(); // Tabs, deren automatische Aufnahme gerade verworfen/beendet wurde
 let letzteMeldung = '';
 
 function abzeichen(an) {
-  const text = an ? 'REC' : einst.automatik ? 'AUTO' : '';
+  // während die Automatik auf Ton wartet: AUTO statt REC
+  const aktiv = an && !(aufnahme && aufnahme.automatik && aufnahme.tonSekunden === 0);
+  const text = aktiv ? 'REC' : einst.automatik ? 'AUTO' : '';
+  an = aktiv;
   browser.browserAction.setBadgeText({ text });
   browser.browserAction.setBadgeBackgroundColor({ color: an ? '#c62828' : '#555555' });
 }
@@ -83,11 +86,7 @@ async function starten({ tabId: tab, bitrate, titel, automatisch = false }) {
   diag.eingefuegt = '';
   diag.abgewiesen = [];
   diag.frames.clear();
-  aufnahme = new Aufnahme({
-    bitrate, titel, sampleRate: aufnahmeRate(),
-    automatik: automatisch ? { nachStille: einst.nachStille } : null,
-  });
-  if (automatisch) aufnahme.beiStille = () => automatischBeenden().catch(console.error);
+  aufnahme = neueAufnahme({ bitrate, titel, automatisch });
   aufnahme.info = 'Suche Audio-/Videoelemente …';
   // Erst starten, dann einfügen: Der Abgriff verbindet sich schon während
   // executeScript und würde sonst als "keine Aufnahme aktiv" abgewiesen.
@@ -109,6 +108,35 @@ async function starten({ tabId: tab, bitrate, titel, automatisch = false }) {
   return status();
 }
 
+function neueAufnahme({ bitrate, titel, automatisch, sampleRate = aufnahmeRate() }) {
+  const a = new Aufnahme({
+    bitrate, titel, sampleRate,
+    automatik: automatisch ? { nachStille: einst.nachStille } : null,
+  });
+  if (automatisch) {
+    a.beiStille = () => automatischTeilen().catch(console.error);
+    a.beiErstemTon = () => { if (aufnahme === a) abzeichen(true); };
+  }
+  return a;
+}
+
+async function blobSpeichern(blob, dateiname) {
+  const url = URL.createObjectURL(blob);
+  const { fragen = false, unterordner = 'Mitschnitte' } = await browser.storage.local.get(['fragen', 'unterordner']);
+  try {
+    const id = await browser.downloads.download({
+      url,
+      filename: unterordner ? `${unterordner}/${dateiname}` : dateiname,
+      saveAs: Boolean(fragen),
+      conflictAction: 'uniquify',
+    });
+    offeneDownloads.set(id, url);
+  } catch (fehler) {
+    URL.revokeObjectURL(url);
+    if (!/canceled/i.test(String(fehler))) throw fehler;
+  }
+}
+
 async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
   if (!aufnahme || !aufnahme.laeuft) return { laeuft: false };
   for (const port of ports.values()) {
@@ -122,20 +150,7 @@ async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
     return { ...aufnahme.status(), verworfen: true };
   }
   const ergebnis = { ...aufnahme.status(), gespeichert: aufnahme.dateiname };
-  const url = URL.createObjectURL(blob);
-  const { fragen = false, unterordner = 'Mitschnitte' } = await browser.storage.local.get(['fragen', 'unterordner']);
-  try {
-    const id = await browser.downloads.download({
-      url,
-      filename: unterordner ? `${unterordner}/${aufnahme.dateiname}` : aufnahme.dateiname,
-      saveAs: Boolean(fragen),
-      conflictAction: 'uniquify',
-    });
-    offeneDownloads.set(id, url);
-  } catch (fehler) {
-    URL.revokeObjectURL(url);
-    if (!/canceled/i.test(String(fehler))) throw fehler;
-  }
+  await blobSpeichern(blob, aufnahme.dateiname);
   tabId = null;
   return ergebnis;
 }
@@ -181,16 +196,46 @@ async function automatischStarten(tab) {
   }
 }
 
-async function automatischBeenden() {
-  if (!aufnahme || !aufnahme.laeuft || !aufnahme.automatik) return;
-  const tab = tabId;
-  const kurz = aufnahme.tonSekunden < MINDEST_TON_SEKUNDEN;
+/** Automatische Aufnahme ohne Ton oder kürzer als die Mindestlänge? */
+function zuKurz(a) {
+  return a.tonSekunden === 0 || a.tonSekunden < einst.mindestTon;
+}
+
+/** Automatische Aufnahme beenden (speichern oder verwerfen) – Abgriffe lösen. */
+async function automatischAbschliessen() {
+  if (!aufnahme || !aufnahme.laeuft || !aufnahme.automatik) return null;
+  const kurz = zuKurz(aufnahme);
+  const ohneTon = aufnahme.tonSekunden === 0;
   const erg = await stoppen({ stilleVerwerfen: true, verwerfen: kurz });
-  gesperrt.add(tab); // erst nach Stille -> Ton wieder automatisch aufnehmen
-  letzteMeldung = kurz
-    ? `Kurzer Ton (unter ${MINDEST_TON_SEKUNDEN} s) verworfen`
-    : `Automatisch gespeichert: ${erg.gespeichert}`;
-  await naechstenHoerbarenTabStarten();
+  if (!ohneTon) {
+    letzteMeldung = kurz ? `Kurzer Ton (unter ${einst.mindestTon} s) verworfen` : `Automatisch gespeichert: ${erg.gespeichert}`;
+  }
+  return erg;
+}
+
+/**
+ * Nach Stille: aktuelle Datei abschließen und sofort eine neue beginnen, die
+ * auf den nächsten Ton wartet. Die Abgriffe in der Seite bleiben verbunden,
+ * so beginnt die nächste Datei ohne Verzögerung (auch bei kurzer Stille).
+ */
+async function automatischTeilen() {
+  const alt = aufnahme;
+  if (!alt || !alt.laeuft || !alt.automatik) return;
+  if (!einst.automatik) {
+    await automatischAbschliessen();
+    return;
+  }
+  aufnahme = neueAufnahme({ bitrate: alt.bitrate, titel: alt.titel, automatisch: true, sampleRate: alt.sampleRate });
+  aufnahme.starten();
+  abzeichen(true);
+  const kurz = zuKurz(alt);
+  const blob = alt.stoppen({ stilleVerwerfen: true });
+  if (kurz) {
+    letzteMeldung = `Kurzer Ton (unter ${einst.mindestTon} s) verworfen – wartet auf Ton`;
+    return;
+  }
+  await blobSpeichern(blob, alt.dateiname);
+  letzteMeldung = `Automatisch gespeichert: ${alt.dateiname} – wartet auf Ton`;
 }
 
 async function naechstenHoerbarenTabStarten() {
@@ -200,18 +245,29 @@ async function naechstenHoerbarenTabStarten() {
   if (tab) await automatischStarten(tab);
 }
 
-function hoerbarGeaendert(tab, hoerbar) {
+async function hoerbarGeaendert(tab, hoerbar) {
   if (!hoerbar) {
     gesperrt.delete(tab.id);
     return;
   }
-  automatischStarten(tab);
+  // wartet die Automatik in einem anderen Tab noch auf Ton? -> zu diesem wechseln
+  if (einst.automatik && aufnahme && aufnahme.laeuft && aufnahme.automatik
+      && aufnahme.tonSekunden === 0 && tab.id !== tabId && aufnehmbar(tab) && !gesperrt.has(tab.id)) {
+    await stoppen({ verwerfen: true });
+  }
+  await automatischStarten(tab);
+}
+
+function zahl(wert, standard, minimum) {
+  const n = Number(wert);
+  return Number.isFinite(n) && wert !== '' && wert != null ? Math.max(minimum, n) : standard;
 }
 
 async function einstellungenLaden() {
-  const gespeichert = await browser.storage.local.get(['automatik', 'nachStille', 'bitrate']);
+  const gespeichert = await browser.storage.local.get(['automatik', 'nachStille', 'mindestTon', 'bitrate']);
   einst.automatik = Boolean(gespeichert.automatik);
-  einst.nachStille = Number(gespeichert.nachStille) || 5;
+  einst.nachStille = zahl(gespeichert.nachStille, 5, 0.5);
+  einst.mindestTon = zahl(gespeichert.mindestTon, 3, 0);
   einst.bitrate = Number(gespeichert.bitrate) || 192;
   if (!aufnahme || !aufnahme.laeuft) abzeichen(false);
 }
@@ -226,7 +282,11 @@ browser.storage.onChanged.addListener(async (aenderung, bereich) => {
     await naechstenHoerbarenTabStarten();
   } else if (!einst.automatik && warAn) {
     letzteMeldung = '';
+    // laufende automatische Aufnahme abschließen (speichern, wenn lang genug)
+    await automatischAbschliessen();
   }
+  // geänderte Stille-Dauer gilt ab sofort
+  if (aufnahme && aufnahme.laeuft && aufnahme.automatik) aufnahme.automatik.nachStille = einst.nachStille;
 });
 einstellungenLaden();
 
@@ -281,7 +341,7 @@ browser.tabs.onRemoved.addListener((tab) => {
   gesperrt.delete(tab);
   if (tab === tabId && aufnahme && aufnahme.laeuft) {
     const auto = Boolean(aufnahme.automatik);
-    const kurz = auto && aufnahme.tonSekunden < MINDEST_TON_SEKUNDEN;
+    const kurz = auto && zuKurz(aufnahme);
     stoppen({ stilleVerwerfen: auto, verwerfen: kurz })
       .then(() => naechstenHoerbarenTabStarten())
       .catch(console.error);
@@ -296,6 +356,10 @@ browser.runtime.onMessage.addListener(async (nachricht) => {
       case 'stoppen': {
         // von Hand beendet: Tab erst nach Stille wieder automatisch aufnehmen
         if (tabId != null) gesperrt.add(tabId);
+        if (aufnahme && aufnahme.automatik) {
+          const kurz = zuKurz(aufnahme);
+          return await stoppen({ stilleVerwerfen: true, verwerfen: kurz });
+        }
         return await stoppen();
       }
       case 'status': return status();

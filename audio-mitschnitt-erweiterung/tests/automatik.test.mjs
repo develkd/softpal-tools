@@ -79,3 +79,26 @@ test('nur Stille: leere Datei, kein Absturz', async () => {
   assert.equal(a.tonSekunden, 0);
   assert.ok((await dauer(blob)) < 0.1);
 });
+
+test('wartet auf Ton: Stille davor fällt weg (bis auf kurzen Vorlauf), kein beiStille ohne Ton', async () => {
+  const uhr = testUhr();
+  const a = new Aufnahme({ jetzt: uhr, taktMs: 0, automatik: { nachStille: 0.5 } });
+  let stille = 0;
+  let ersterTon = 0;
+  a.beiStille = () => { stille++; };
+  a.beiErstemTon = () => { ersterTon++; };
+  a.starten();
+  liefern(a, uhr, 3, false); // 3 s warten
+  await warten(5);
+  assert.equal(stille, 0, 'beiStille ohne Ton ausgelöst');
+  assert.equal(a.status().wartetAufTon, true);
+  liefern(a, uhr, 2); // Ton
+  await warten(5);
+  assert.equal(ersterTon, 1);
+  assert.equal(a.status().wartetAufTon, false);
+  liefern(a, uhr, 0.9, false); // 0,5 s + 0,3 s Latenzpuffer des Mischers
+  await warten(5);
+  assert.equal(stille, 1, 'nach 0,5 s Stille nicht gemeldet');
+  const d = await dauer(a.stoppen({ stilleVerwerfen: true }));
+  assert.ok(d > 1.9 && d < 2.6, `Dauer ${d} (Stille vor dem Ton nicht entfernt?)`);
+});

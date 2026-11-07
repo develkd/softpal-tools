@@ -9,7 +9,50 @@ let ctx = null;
 let abgriff = null;
 let tabId = null;
 const offeneUrls = new Set();
-const MINDEST_TON_SEKUNDEN = 3; // kürzere automatische Aufnahmen verwerfen
+let autoEinst = { nachStille: 5, mindestTon: 3 };
+
+/** Automatische Aufnahme ohne Ton oder kürzer als die Mindestlänge? */
+function zuKurz(a) {
+  return a.tonSekunden === 0 || a.tonSekunden < autoEinst.mindestTon;
+}
+
+function neueAufnahme({ bitrate, titel, automatisch }) {
+  const a = new Aufnahme({ bitrate, titel, automatik: automatisch ? { nachStille: autoEinst.nachStille } : null });
+  a.info = automatisch ? 'Automatisch · neue Datei nach Stille' : 'Gesamter Ton des Tabs';
+  if (automatisch) {
+    a.beiStille = () => teilen().catch(console.error);
+    a.beiErstemTon = () => {
+      if (aufnahme === a) chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'ton' }).catch(() => {});
+    };
+  }
+  return a;
+}
+
+/** Automatik: Datei nach Stille abschließen, Tab-Aufnahme läuft für die nächste weiter. */
+async function teilen() {
+  const alt = aufnahme;
+  if (!alt || !alt.laeuft || !alt.automatik) return;
+  aufnahme = neueAufnahme({ bitrate: alt.bitrate, titel: alt.titel, automatisch: true });
+  aufnahme.starten();
+  const kurz = zuKurz(alt);
+  const blob = alt.stoppen({ stilleVerwerfen: true });
+  if (kurz) {
+    await chrome.runtime.sendMessage({
+      ziel: 'hintergrund', typ: 'verworfen', tabId, mindest: autoEinst.mindestTon, mitTon: alt.tonSekunden > 0, weiter: true,
+    });
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  offeneUrls.add(url);
+  await chrome.runtime.sendMessage({
+    ziel: 'hintergrund', typ: 'fertig', url, dateiname: alt.dateiname, tabId, automatisch: true, weiter: true,
+  });
+}
+
+/** Automatische Aufnahme ganz beenden (speichern, wenn lang genug). */
+function automatischBeenden() {
+  return stoppen({ stilleVerwerfen: true, verwerfen: zuKurz(aufnahme) });
+}
 
 async function starten({ streamId, bitrate, titel, tabId: tab, automatik = null }) {
   if (aufnahme && aufnahme.laeuft) throw new Error('Es läuft bereits eine Aufnahme.');
@@ -23,14 +66,9 @@ async function starten({ streamId, bitrate, titel, tabId: tab, automatik = null 
   // Beim Aufnehmen schaltet Chrome den Tab stumm – Ton weiter hörbar machen
   quelle.connect(ctx.destination);
 
-  aufnahme = new Aufnahme({ bitrate, titel, automatik });
-  aufnahme.info = automatik ? 'Automatisch · endet nach Stille' : 'Gesamter Ton des Tabs';
-  if (automatik) {
-    aufnahme.beiStille = () => {
-      const kurz = aufnahme.tonSekunden < MINDEST_TON_SEKUNDEN;
-      stoppen({ stilleVerwerfen: true, verwerfen: kurz }).catch(console.error);
-    };
-  }
+  if (automatik) autoEinst = { ...autoEinst, ...automatik };
+  aufnahme = neueAufnahme({ bitrate, titel, automatisch: Boolean(automatik) });
+  // Rückruf liest "aufnahme" bei jedem Block neu -> nach dem Teilen geht es in die neue Datei
   abgriff = erstelleAbgriff(ctx, (l, r) => aufnahme.mischer.hinzufuegen('tab', l, r));
   quelle.connect(abgriff.eingang);
   aufnahme.starten();
@@ -39,9 +77,7 @@ async function starten({ streamId, bitrate, titel, tabId: tab, automatik = null 
   for (const spur of stream.getAudioTracks()) {
     spur.addEventListener('ended', () => {
       if (!aufnahme || !aufnahme.laeuft) return;
-      const auto = Boolean(aufnahme.automatik);
-      const kurz = auto && aufnahme.tonSekunden < MINDEST_TON_SEKUNDEN;
-      stoppen({ stilleVerwerfen: auto, verwerfen: kurz }).catch(console.error);
+      (aufnahme.automatik ? automatischBeenden() : stoppen()).catch(console.error);
     });
   }
   return aufnahme.status();
@@ -60,7 +96,7 @@ async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
 
   if (verwerfen) {
     await chrome.runtime.sendMessage({
-      ziel: 'hintergrund', typ: 'verworfen', tabId, mindest: MINDEST_TON_SEKUNDEN,
+      ziel: 'hintergrund', typ: 'verworfen', tabId, mindest: autoEinst.mindestTon, mitTon: status.tonSekunden > 0,
     });
     return { ...status, verworfen: true };
   }
@@ -84,7 +120,12 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
   (async () => {
     switch (nachricht.typ) {
       case 'starten': return starten(nachricht);
-      case 'stoppen': return stoppen();
+      case 'stoppen': return aufnahme && aufnahme.automatik ? automatischBeenden() : stoppen();
+      case 'automatikAus': return aufnahme && aufnahme.laeuft && aufnahme.automatik ? automatischBeenden() : status();
+      case 'einstellungen':
+        autoEinst = { nachStille: nachricht.nachStille, mindestTon: nachricht.mindestTon };
+        if (aufnahme && aufnahme.automatik) aufnahme.automatik.nachStille = autoEinst.nachStille;
+        return status();
       case 'status': return status();
       case 'pausieren': if (aufnahme) aufnahme.pausieren(); return status();
       case 'fortsetzen': if (aufnahme) aufnahme.fortsetzen(); return status();

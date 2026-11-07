@@ -26,15 +26,19 @@ Weitere Funktionen:
 
 Im Popup **„Automatisch aufnehmen“** anhaken. Danach braucht es keinen Klick mehr:
 
-- **Start:** Sobald ein Tab Ton abspielt (Lautsprechersymbol am Tab), beginnt die Aufnahme. Das Symbol zeigt `AUTO`, während die Automatik wartet, und `REC` während der Aufnahme.
-- **Ende:** Nach einer einstellbaren Zeit Stille (Einstellungen → „Automatik: Ende nach Stille von“, Standard 5 s) wird die Datei gespeichert. Die Stille am Ende wird abgeschnitten, kurze Pausen dazwischen bleiben erhalten.
-- **Kurze Töne** (unter 3 s, z. B. Benachrichtigungen) werden verworfen.
-- Wurde eine Aufnahme beendet, startet derselbe Tab erst wieder, nachdem er zwischendurch still war. So entsteht keine Endlosschleife.
+- **Start:** Sobald ein Tab Ton abspielt (Lautsprechersymbol am Tab), beginnt die Aufnahme.
+- **Neue Datei nach Stille:** Nach einer einstellbaren Zeit Stille wird die Datei gespeichert. Einstellbar unter Einstellungen → „neue Datei nach Stille von … s“, frei eingebbar ab **0,5 s**, Standard 5 s. Die Stille am Ende und vor dem nächsten Ton wird abgeschnitten.
+- **Bereit für den nächsten Ton:** Die Aufnahme bleibt danach bereit. Beim nächsten Ton beginnt sofort eine neue Datei, auch nach sehr kurzen Pausen. Eine Playlist wird so automatisch in einzelne Titel geteilt.
+- **Zu kurze Stücke verwerfen:** Einstellbar unter „Aufnahmen verwerfen, kürzer als … s“, Standard 3 s, 0 = nichts verwerfen. So landen Benachrichtigungstöne nicht als Datei im Ordner. Aufnahmen ganz ohne Ton werden nie gespeichert.
+- **Symbol:** `AUTO`, solange die Automatik auf Ton wartet; `REC`, während Ton aufgenommen wird.
+- Ausschalten der Automatik oder „Beenden“ speichert ein laufendes Stück, wenn es lang genug ist.
 - Von Hand gestartete Aufnahmen laufen wie gewohnt weiter, bis man sie beendet.
+
+Hinweis: Als Stille gilt ein Pegel unter −60 dBFS. Das Ende wird etwa 0,3 s nach Ablauf der eingestellten Zeit erkannt (Puffer gegen Aussetzer).
 
 | | Chrome / Edge | Firefox |
 |---|---|---|
-| Gilt für | den Tab, in dem die Automatik eingeschaltet wurde. Chrome erlaubt Tab-Aufnahmen nur nach einem Klick auf das Symbol in diesem Tab. Zum Wechseln die Automatik im anderen Tab anhaken. | **alle Tabs**; es wird der erste Tab aufgenommen, der Ton abspielt |
+| Gilt für | den Tab, in dem die Automatik eingeschaltet wurde. Chrome erlaubt Tab-Aufnahmen nur nach einem Klick auf das Symbol in diesem Tab. Zum Wechseln die Automatik im anderen Tab anhaken. | **alle Tabs**; aufgenommen wird der erste Tab, der Ton abspielt. Wartet die Automatik gerade, wechselt sie zu einem anderen Tab, sobald dieser Ton abspielt. |
 | Nach Seitenwechsel | Lädt der Tab eine ganz neue Seite, kann Chrome die Freigabe zurückziehen. Dann zeigt das Popup einen Hinweis, und ein Klick auf das Symbol genügt. | läuft weiter |
 
 ## Unterschiede Chrome / Firefox

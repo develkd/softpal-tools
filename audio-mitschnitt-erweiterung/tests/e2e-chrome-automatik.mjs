@@ -50,65 +50,8 @@ const context = await chromium.launchPersistentContext(profil, {
   ],
 });
 
-try {
-  let [sw] = context.serviceWorkers();
-  if (!sw) sw = await context.waitForEvent('serviceworker');
-  await sw.evaluate(() => chrome.storage.local.set({ nachStille: 2 }));
-
-  const seite = await context.newPage();
-  await seite.goto(`http://127.0.0.1:${server.address().port}/`);
-  const tabId = await sw.evaluate(async () => Math.max(...(await chrome.tabs.query({})).map((t) => t.id)));
-
-  const popup = await context.newPage();
-  await popup.goto(`chrome-extension://${erweiterungsId}/popup/popup.html?tab=${tabId}`);
-  await popup.waitForFunction(() => document.getElementById('automatik-text').textContent.includes('diesem Tab'));
-  await popup.check('#automatik');
-  await popup.waitForFunction(() => document.getElementById('hinweis').textContent.includes('wartet auf Ton'));
-  assert.equal(await sw.evaluate(() => chrome.action.getBadgeText({})), 'AUTO');
-  console.log('Automatik an:', await popup.textContent('#hinweis'));
-
-  await seite.bringToFront();
-  await seite.evaluate(() => window.abspielen());
-  // Start abwarten (Tab wird hörbar)
-  const gestartet = await sw.evaluate(async () => {
-    for (let i = 0; i < 50; i++) {
-      if ((await chrome.action.getBadgeText({})) === 'REC') return true;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    return false;
-  });
-  assert.ok(gestartet, 'Aufnahme startete nicht automatisch');
-  console.log('automatisch gestartet');
-  await popup.bringToFront();
-  await popup.waitForTimeout(1500);
-  await popup.screenshot({ path: join(profil, 'popup-automatik.png') });
-  console.log(`Screenshot: ${join(profil, 'popup-automatik.png')}`);
-  await seite.bringToFront();
-
-  // Ende abwarten: Töne (5,2 s) + 2 s Stille
-  const download = await sw.evaluate(async () => {
-    for (let i = 0; i < 150; i++) {
-      const [d] = await chrome.downloads.search({ orderBy: ['-startTime'], limit: 1 });
-      if (d && d.state === 'complete') return d;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    return null;
-  });
-  assert.ok(download, 'keine automatisch gespeicherte Datei');
-  assert.equal(await sw.evaluate(() => chrome.action.getBadgeText({})), 'AUTO');
-
-  await popup.bringToFront();
-  await popup.waitForFunction(() => document.getElementById('hinweis').textContent.includes('Automatisch gespeichert'));
-  console.log(await popup.textContent('#hinweis'));
-
-  const mp3 = readFileSync(download.filename);
-  const dauer = (mp3Frames(mp3).length * 1152) / 48000;
-  console.log(`MP3: ${(mp3.length / 1024).toFixed(0)} KB, ${dauer.toFixed(2)} s`);
-  // 2 s + 1 s + 2 s; Anfang kann um die Erkennungszeit "hörbar" kürzer sein,
-  // die Stille am Ende muss weg sein
-  assert.ok(dauer > 3.8 && dauer < 6.2, `Dauer ${dauer}`);
-
-  const verlauf = await seite.evaluate(async (b64) => {
+async function verlaufAnalysieren(seite, mp3) {
+  return seite.evaluate(async (b64) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const puffer = await new OfflineAudioContext(1, 8000, 8000).decodeAudioData(bytes.buffer);
     const x = puffer.getChannelData(0); const sr = puffer.sampleRate;
@@ -117,18 +60,103 @@ try {
       for (const v of seg) { const s0 = v + k * s1 - s2; s2 = s1; s1 = s0; }
       return s1 * s1 + s2 * s2 - k * s1 * s2;
     };
-    const aus = []; const halb = Math.floor(sr / 2);
-    for (let s = 0; s + halb <= x.length; s += halb) {
-      const seg = x.subarray(s, s + halb); let p = 0;
+    const aus = []; const viertel = Math.floor(sr / 4);
+    for (let s = 0; s + viertel <= x.length; s += viertel) {
+      const seg = x.subarray(s, s + viertel); let p = 0;
       for (const v of seg) p = Math.max(p, Math.abs(v));
       aus.push(p < 0.02 ? 'still' : energie(seg, 1000) > energie(seg, 2000) ? 1000 : 2000);
     }
     return aus;
   }, mp3.toString('base64'));
-  console.log('Verlauf (je 0,5 s):', verlauf.join(' '));
-  const folge = verlauf.filter((v, i) => v !== verlauf[i - 1]).filter((v) => v !== 'still');
-  assert.deepEqual(folge, [1000, 2000]);
-  assert.ok(verlauf.slice(-1)[0] !== 'still' || verlauf.slice(-2)[0] !== 'still', 'Stille am Ende nicht entfernt');
+}
+
+try {
+  let [sw] = context.serviceWorkers();
+  if (!sw) sw = await context.waitForEvent('serviceworker');
+
+  const seite = await context.newPage();
+  await seite.goto(`http://127.0.0.1:${server.address().port}/`);
+  const tabId = await sw.evaluate(async () => Math.max(...(await chrome.tabs.query({})).map((t) => t.id)));
+
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${erweiterungsId}/popup/popup.html?tab=${tabId}`);
+  await popup.waitForFunction(() => document.getElementById('automatik-text').textContent.includes('diesem Tab'));
+  // Werte über die Eingabefelder setzen (Komma wie bei deutscher Eingabe)
+  await popup.click('#einstellungen summary');
+  await popup.fill('#nach-stille', '0.5');
+  await popup.fill('#mindest-ton', '1');
+  await popup.locator('#mindest-ton').blur();
+  const gespeichert = await sw.evaluate(() => chrome.storage.local.get(['nachStille', 'mindestTon']));
+  assert.deepEqual(gespeichert, { nachStille: 0.5, mindestTon: 1 });
+  await popup.fill('#nach-stille', '0.1'); // unter Minimum -> 0,5
+  await popup.locator('#nach-stille').blur();
+  assert.equal(await popup.inputValue('#nach-stille'), '0.5');
+  assert.equal((await sw.evaluate(() => chrome.storage.local.get('nachStille'))).nachStille, 0.5);
+
+  await popup.check('#automatik');
+  await popup.waitForFunction(() => document.getElementById('hinweis').textContent.includes('wartet auf Ton'));
+  assert.equal(await sw.evaluate(() => chrome.action.getBadgeText({})), 'AUTO');
+  console.log('Automatik an:', await popup.textContent('#hinweis'));
+
+  await seite.bringToFront();
+  await seite.evaluate(() => window.abspielen());
+  const rec = await sw.evaluate(async () => {
+    for (let i = 0; i < 50; i++) {
+      if ((await chrome.action.getBadgeText({})) === 'REC') return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  });
+  assert.ok(rec, 'Aufnahme startete nicht automatisch');
+  console.log('automatisch gestartet');
+  await popup.bringToFront();
+  await popup.waitForTimeout(1200);
+  await popup.screenshot({ path: join(profil, 'popup-automatik.png') });
+  console.log(`Screenshot: ${join(profil, 'popup-automatik.png')}`);
+  await seite.bringToFront();
+
+  // zwei Dateien: Ton 1 (vor der 1-s-Pause) und Ton 2
+  const dateien = await sw.evaluate(async () => {
+    for (let i = 0; i < 150; i++) {
+      const d = (await chrome.downloads.search({ orderBy: ['startTime'] })).filter((x) => x.state === 'complete');
+      if (d.length >= 2) return d;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return (await chrome.downloads.search({})).filter((x) => x.state === 'complete');
+  });
+  assert.equal(dateien.length, 2, `erwartet 2 Dateien, erhalten ${dateien.length}`);
+
+  // Aufnahme wartet weiter (Tab-Aufnahme offen), Symbol AUTO
+  await popup.bringToFront();
+  await popup.waitForFunction(() => document.getElementById('hinweis').textContent.includes('Automatisch gespeichert'));
+  console.log(await popup.textContent('#hinweis'));
+  const st = await popup.evaluate(() => chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'status' }));
+  assert.equal(st.laeuft, true);
+  assert.equal(st.wartetAufTon, true);
+  assert.equal(await sw.evaluate(() => chrome.action.getBadgeText({})), 'AUTO');
+
+  const erwartet = [1000, 2000];
+  for (const [i, d] of dateien.entries()) {
+    const mp3 = readFileSync(d.filename);
+    const dauer = (mp3Frames(mp3).length * 1152) / 48000;
+    const verlauf = await verlaufAnalysieren(seite, mp3);
+    console.log(`Datei ${i + 1}: ${dauer.toFixed(2)} s · ${verlauf.join(' ')}`);
+    assert.ok(dauer > 1.6 && dauer < 2.8, `Datei ${i + 1} Dauer ${dauer}`);
+    const toene = [...new Set(verlauf.filter((v) => v !== 'still'))];
+    assert.deepEqual(toene, [erwartet[i]], `Datei ${i + 1} enthält ${toene}`);
+    assert.ok(verlauf.filter((v) => v === 'still').length <= 1, `Datei ${i + 1}: zu viel Stille`);
+  }
+
+  // Automatik aus: wartende Aufnahme endet, keine leere Datei
+  await popup.uncheck('#automatik');
+  await popup.waitForFunction(async () => {
+    const s = await chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'status' });
+    return !s.laeuft;
+  });
+  await popup.waitForTimeout(500);
+  const alle = await sw.evaluate(async () => (await chrome.downloads.search({})).length);
+  assert.equal(alle, 2, 'beim Ausschalten wurde eine (leere) Datei gespeichert');
+  assert.equal(await sw.evaluate(() => chrome.action.getBadgeText({})), '');
   console.log('Automatik-E2E OK');
 } finally {
   await context.close();

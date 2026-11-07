@@ -40,6 +40,11 @@ details { border-top: 1px solid var(--rand); padding-top: 8px; margin-top: 4px; 
 summary { cursor: pointer; color: var(--grau); }
 label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 label.haken { justify-content: flex-start; }
+.zahl { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.zahl input { width: 64px; font: inherit; padding: 3px 6px; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--rand); border-radius: 6px; text-align: right; }
+.zahl input:invalid { border-color: var(--rot); }
+.punkt.wartet { background: var(--grau); animation: blinken 1.6s steps(2) infinite; }
 select { font: inherit; padding: 3px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--rand); border-radius: 6px; }
 #diagnose pre { white-space: pre-wrap; word-break: break-word; font-size: 10.5px; line-height: 1.35;
   background: var(--hell); padding: 6px 8px; border-radius: 6px; max-height: 220px; overflow: auto; margin: 6px 0; }
