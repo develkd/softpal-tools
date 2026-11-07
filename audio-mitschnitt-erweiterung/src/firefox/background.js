@@ -19,6 +19,19 @@ function abzeichen(an) {
   if (an) browser.browserAction.setBadgeBackgroundColor({ color: '#c62828' });
 }
 
+// Aufnahme mit der Standardrate des Audiosystems (meist 44,1 oder 48 kHz),
+// damit die Abgriffe in den Seiten in der Regel nichts umrechnen müssen.
+function aufnahmeRate() {
+  try {
+    const ctx = new AudioContext();
+    const rate = ctx.sampleRate;
+    ctx.close();
+    return [32000, 44100, 48000].includes(rate) ? rate : 48000;
+  } catch (_) {
+    return 48000;
+  }
+}
+
 async function abgriffEinfuegen() {
   try {
     for (const file of ['/lib/abgriff.js', '/firefox/tap.js']) {
@@ -36,14 +49,19 @@ function infoText() {
   let erfasst = 0;
   let fremd = 0;
   let blockiert = 0;
+  let fehler = 0;
+  let fehlertext = '';
   for (const i of quellenInfo.values()) {
     erfasst += i.erfasst || 0;
     fremd += i.fremd || 0;
     blockiert += i.blockiert || 0;
+    fehler += i.fehler || 0;
+    if (i.fehlertext) fehlertext = i.fehlertext;
   }
   const teile = [erfasst === 1 ? '1 Medienquelle' : `${erfasst} Medienquellen`];
   if (fremd) teile.push(`${fremd} von fremder Domain nicht aufnehmbar`);
   if (blockiert) teile.push(`${blockiert} warten auf einen Klick in die Seite`);
+  if (fehler) teile.push(`${fehler} nicht aufnehmbar: ${fehlertext}`);
   return teile.join(' · ');
 }
 
@@ -51,7 +69,7 @@ async function starten({ tabId: tab, bitrate, titel }) {
   if (aufnahme && aufnahme.laeuft) throw new Error('Es läuft bereits eine Aufnahme.');
   tabId = tab;
   quellenInfo.clear();
-  aufnahme = new Aufnahme({ bitrate, titel });
+  aufnahme = new Aufnahme({ bitrate, titel, sampleRate: aufnahmeRate() });
   aufnahme.info = 'Suche Audio-/Videoelemente …';
   const ergebnis = await abgriffEinfuegen();
   if (ergebnis !== true) {
@@ -120,13 +138,13 @@ browser.runtime.onConnect.addListener((port) => {
   ports.set(id, port);
   port.onMessage.addListener((m) => {
     if (!aufnahme || !aufnahme.laeuft) return;
-    if (m.typ === 'pcm') aufnahme.mischer.hinzufuegen(id, m.l, m.r);
+    if (m.typ === 'pcm') aufnahme.hinzufuegen(id, m.l, m.r, m.rate);
     else if (m.typ === 'info') quellenInfo.set(id, m);
   });
   port.onDisconnect.addListener(() => {
     ports.delete(id);
     quellenInfo.delete(id);
-    if (aufnahme) aufnahme.mischer.entfernen(id);
+    if (aufnahme) aufnahme.entfernen(id);
   });
 });
 

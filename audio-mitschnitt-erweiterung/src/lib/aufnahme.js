@@ -76,7 +76,9 @@
 
   class Aufnahme {
     constructor({ bitrate = 192, sampleRate = 48000, titel = '', jetzt, lame, taktMs = 100 } = {}) {
+      this.sampleRate = sampleRate;
       this.mischer = new wurzel.Mischer({ sampleRate, jetzt });
+      this._resampler = new Map(); // Quelle -> Resampler (falls andere Rate)
       this.kodierer = new Mp3Kodierer({ sampleRate, bitrate, lame });
       this.titel = titel;
       this.bitrate = bitrate;
@@ -93,6 +95,27 @@
       this.mischer.starten();
       this.laeuft = true;
       if (this.taktMs) this._timer = setInterval(() => this.takt(), this.taktMs);
+    }
+
+    /**
+     * PCM-Block einer Quelle annehmen; liefert die Quelle mit anderer
+     * Abtastrate (rate), wird umgerechnet.
+     */
+    hinzufuegen(id, links, rechts, rate = this.sampleRate) {
+      if (rate !== this.sampleRate) {
+        let rs = this._resampler.get(id);
+        if (!rs || rs.von !== rate) {
+          rs = new wurzel.Resampler(rate, this.sampleRate);
+          this._resampler.set(id, rs);
+        }
+        ({ links, rechts } = rs.verarbeiten(links, rechts));
+      }
+      this.mischer.hinzufuegen(id, links, rechts);
+    }
+
+    entfernen(id) {
+      this.mischer.entfernen(id);
+      this._resampler.delete(id);
     }
 
     takt() {

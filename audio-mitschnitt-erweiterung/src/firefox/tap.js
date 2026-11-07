@@ -9,6 +9,10 @@
  *  - Elemente von fremder Domain ohne CORS werden NICHT angefasst: Web Audio
  *    würde sie stumm schalten. Sie spielen normal weiter, fehlen aber in der
  *    Aufnahme.
+ *
+ * Wichtig: Der AudioContext läuft mit der Standardrate von Firefox. Mit fest
+ * vorgegebener Rate verweigert Firefox das Anschließen von Medienelementen
+ * (Bug 1725336/937718); die Umrechnung erledigt die Hintergrundseite.
  */
 (() => {
   'use strict';
@@ -19,7 +23,6 @@
     return;
   }
 
-  const SAMPLERATE = 48000;
   const erstelleAbgriff = globalThis.erstelleAbgriff; // aus lib/abgriff.js (vorher eingefügt)
 
   function herkunft(el) {
@@ -38,11 +41,12 @@
     ctx: null,
     abgriff: null,
     port: null,
-    behandelt: new WeakMap(), // Element -> 'erfasst' | 'fremd' | 'blockiert'
+    behandelt: new WeakMap(), // Element -> 'erfasst' | 'fremd' | 'blockiert' | 'fehler'
     quellen: new WeakMap(), // Element -> AudioNode (bleibt bestehen)
     angeschlossen: new Set(), // AudioNodes, die am aktuellen Abgriff hängen
     inArbeit: new WeakSet(),
-    zaehler: { erfasst: 0, fremd: 0, blockiert: 0 },
+    zaehler: { erfasst: 0, fremd: 0, blockiert: 0, fehler: 0 },
+    fehlertext: '',
     beobachter: null,
   };
 
@@ -52,19 +56,20 @@
   }
 
   function info() {
-    senden({ typ: 'info', ...zustand.zaehler });
+    senden({ typ: 'info', ...zustand.zaehler, fehlertext: zustand.fehlertext });
   }
 
   async function kontext() {
     if (!zustand.ctx) {
-      zustand.ctx = new AudioContext({ sampleRate: SAMPLERATE });
+      zustand.ctx = new AudioContext(); // bewusst ohne sampleRate, s. o.
     }
     if (zustand.ctx.state !== 'running') {
       await Promise.race([zustand.ctx.resume(), new Promise((r) => setTimeout(r, 500))]);
     }
     if (!zustand.abgriff && zustand.port) {
+      const rate = zustand.ctx.sampleRate;
       zustand.abgriff = erstelleAbgriff(zustand.ctx, (l, r) => {
-        if (zustand.zaehler.erfasst > 0) senden({ typ: 'pcm', l, r });
+        if (zustand.zaehler.erfasst > 0) senden({ typ: 'pcm', l, r, rate });
       });
     }
     return zustand.ctx.state === 'running' ? zustand.ctx : null;
@@ -82,13 +87,17 @@
   async function erfassen(el) {
     if (!zustand.port || zustand.inArbeit.has(el)) return;
     const bisher = zustand.behandelt.get(el);
-    if (bisher === 'erfasst' || bisher === 'fremd') return;
+    if (bisher === 'erfasst' || bisher === 'fremd' || bisher === 'fehler') return;
     const art = herkunft(el);
     if (art === 'leer') return; // später beim Abspielen erneut versuchen
     if (art === 'fremd') { zaehlen(el, 'fremd'); return; }
     zustand.inArbeit.add(el);
     try {
       await anschliessen(el, art);
+    } catch (fehler) {
+      // Fehler sichtbar machen (Popup), statt ihn zu verschlucken
+      zustand.fehlertext = `${fehler && fehler.name ? `${fehler.name}: ` : ''}${fehler && fehler.message ? fehler.message : fehler}`;
+      zaehlen(el, 'fehler');
     } finally {
       zustand.inArbeit.delete(el);
     }
@@ -98,24 +107,20 @@
     const ctx = await kontext();
     if (!ctx || !zustand.abgriff) { zaehlen(el, 'blockiert'); return; } // Autoplay-Sperre: nichts anfassen
     let knoten = zustand.quellen.get(el);
-    try {
-      if (!knoten) {
-        if (art === 'stream') {
-          if (!el.srcObject.getAudioTracks().length) return;
-          knoten = ctx.createMediaStreamSource(el.srcObject);
-        } else {
-          knoten = ctx.createMediaElementSource(el);
-          knoten.connect(ctx.destination); // weiterhin hörbar
-        }
-        zustand.quellen.set(el, knoten);
+    if (!knoten) {
+      if (art === 'stream') {
+        if (!el.srcObject.getAudioTracks().length) return;
+        knoten = ctx.createMediaStreamSource(el.srcObject);
+      } else {
+        // wirft z. B., wenn die Seite das Element schon selbst mit Web Audio nutzt
+        knoten = ctx.createMediaElementSource(el);
+        knoten.connect(ctx.destination); // weiterhin hörbar
       }
-      knoten.connect(zustand.abgriff.eingang);
-      zustand.angeschlossen.add(knoten);
-      zaehlen(el, 'erfasst');
-    } catch (fehler) {
-      // z. B. Seite nutzt das Element schon selbst mit Web Audio
-      zaehlen(el, 'fremd');
+      zustand.quellen.set(el, knoten);
     }
+    knoten.connect(zustand.abgriff.eingang);
+    zustand.angeschlossen.add(knoten);
+    zaehlen(el, 'erfasst');
   }
 
   function alleSuchen() {
@@ -131,7 +136,8 @@
     zustand.port = browser.runtime.connect({ name: 'audio-mitschnitt-abgriff' });
     zustand.port.onMessage.addListener((m) => { if (m.typ === 'stopp') trennen(); });
     zustand.port.onDisconnect.addListener(trennen);
-    zustand.zaehler = { erfasst: 0, fremd: 0, blockiert: 0 };
+    zustand.zaehler = { erfasst: 0, fremd: 0, blockiert: 0, fehler: 0 };
+    zustand.fehlertext = '';
     zustand.behandelt = new WeakMap();
     document.addEventListener('play', beiMedienEreignis, true);
     document.addEventListener('playing', beiMedienEreignis, true);

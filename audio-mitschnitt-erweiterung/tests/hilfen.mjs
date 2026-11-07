@@ -8,6 +8,7 @@ const lib = new URL('../src/lib/', import.meta.url);
 
 if (!globalThis.lamejs) runInThisContext(readFileSync(new URL('lame.min.js', lib), 'utf8'));
 export const { Mischer } = require('../src/lib/mischer.js');
+export const { Resampler } = require('../src/lib/resampler.js');
 export const aufnahmeModul = require('../src/lib/aufnahme.js');
 
 /** Uhr zum Weiterdrehen in Tests */

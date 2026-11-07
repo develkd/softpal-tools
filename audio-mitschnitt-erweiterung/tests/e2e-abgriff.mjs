@@ -27,16 +27,19 @@ function wav(frequenz, sekunden, sr = 48000) {
 }
 
 const SEITE = (fremdUrl) => `<!doctype html><meta charset="utf-8"><title>Abgriff</title>
-<script src="/lib/lame.min.js"></script><script src="/lib/mischer.js"></script><script src="/lib/aufnahme.js"></script>
+<script src="/lib/lame.min.js"></script><script src="/lib/mischer.js"></script><script src="/lib/resampler.js"></script><script src="/lib/aufnahme.js"></script>
 <audio id="eigen" src="/ton1000.wav" loop></audio>
 <audio id="fremd" src="${fremdUrl}" loop></audio>
 <script>
   // Nachbildung von browser.runtime.connect: Port liefert direkt an eine Aufnahme
-  window.aufnahme = new Aufnahme({ bitrate: 128 });
+  // wie die Firefox-Hintergrundseite; hier bewusst eine andere Rate als die
+  // Standardrate der Seite, damit die Umrechnung mitgetestet wird
+  const seitenRate = new AudioContext().sampleRate;
+  window.aufnahme = new Aufnahme({ bitrate: 128, sampleRate: seitenRate === 48000 ? 44100 : 48000 });
   window.infos = [];
   window.browser = { runtime: { connect: () => ({
     postMessage(m) {
-      if (m.typ === 'pcm') aufnahme.mischer.hinzufuegen('seite', m.l, m.r);
+      if (m.typ === 'pcm') { window.pcmRate = m.rate; aufnahme.hinzufuegen('seite', m.l, m.r, m.rate); }
       if (m.typ === 'info') infos.push(m);
     },
     disconnect() {},
@@ -51,6 +54,7 @@ const SEITE = (fremdUrl) => `<!doctype html><meta charset="utf-8"><title>Abgriff
 const dateien = {
   '/lib/lame.min.js': readFileSync(new URL('lib/lame.min.js', src)),
   '/lib/mischer.js': readFileSync(new URL('lib/mischer.js', src)),
+  '/lib/resampler.js': readFileSync(new URL('lib/resampler.js', src)),
   '/lib/aufnahme.js': readFileSync(new URL('lib/aufnahme.js', src)),
   '/lib/abgriff.js': readFileSync(new URL('lib/abgriff.js', src)),
   '/firefox/tap.js': readFileSync(new URL('firefox/tap.js', src)),
@@ -118,17 +122,19 @@ try {
       vorher: abschnitt(0.6, 1.6), // nur 1000 Hz erwartet
       nachher: abschnitt(3.0, 3.6), // 1000 + 3000 Hz erwartet
       info: infos.at(-1),
+      raten: { seite: window.pcmRate, aufnahme: aufnahme.sampleRate },
       fremdNochHoerbar: !document.getElementById('fremd').paused,
     };
   });
   console.log(JSON.stringify(ergebnis, null, 1));
   assert.deepEqual(fehler, []);
+  assert.notEqual(ergebnis.raten.seite, ergebnis.raten.aufnahme, 'Umrechnung wurde nicht getestet');
   assert.ok(ergebnis.dauer > 3.3 && ergebnis.dauer < 4.6, `Dauer ${ergebnis.dauer}`);
   const { vorher, nachher, info } = ergebnis;
   assert.ok(vorher.f1000 > 1000 * vorher.f2000, '1000 Hz (eigene Herkunft) fehlt oder 2000 Hz (fremd) wurde aufgenommen');
   assert.ok(nachher.f3000 > 100 * nachher.f2000, 'neu eingefügtes Element (3000 Hz) fehlt');
   assert.ok(nachher.f1000 > 100 * nachher.f2000);
-  assert.deepEqual({ erfasst: info.erfasst, fremd: info.fremd }, { erfasst: 2, fremd: 1 });
+  assert.deepEqual({ erfasst: info.erfasst, fremd: info.fremd, fehler: info.fehler }, { erfasst: 2, fremd: 1, fehler: 0 });
   assert.ok(ergebnis.fremdNochHoerbar);
   console.log('Abgriff OK');
 } finally {

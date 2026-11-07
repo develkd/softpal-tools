@@ -1,6 +1,6 @@
 {
   "name": "audio-mitschnitt-erweiterung",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Browser-Erweiterung (Chrome/Edge/Firefox): Ton des aktuellen Tabs als MP3 aufnehmen",
   "license": "UNLICENSED",
