@@ -22,6 +22,21 @@ Weitere Funktionen:
 - Der Ton bleibt während der Aufnahme **hörbar**.
 - Es läuft immer nur eine Aufnahme zugleich. Das Popup zeigt an, in welchem Tab.
 
+## Automatisch aufnehmen
+
+Im Popup **„Automatisch aufnehmen“** anhaken. Danach braucht es keinen Klick mehr:
+
+- **Start:** Sobald ein Tab Ton abspielt (Lautsprechersymbol am Tab), beginnt die Aufnahme. Das Symbol zeigt `AUTO`, während die Automatik wartet, und `REC` während der Aufnahme.
+- **Ende:** Nach einer einstellbaren Zeit Stille (Einstellungen → „Automatik: Ende nach Stille von“, Standard 5 s) wird die Datei gespeichert. Die Stille am Ende wird abgeschnitten, kurze Pausen dazwischen bleiben erhalten.
+- **Kurze Töne** (unter 3 s, z. B. Benachrichtigungen) werden verworfen.
+- Wurde eine Aufnahme beendet, startet derselbe Tab erst wieder, nachdem er zwischendurch still war. So entsteht keine Endlosschleife.
+- Von Hand gestartete Aufnahmen laufen wie gewohnt weiter, bis man sie beendet.
+
+| | Chrome / Edge | Firefox |
+|---|---|---|
+| Gilt für | den Tab, in dem die Automatik eingeschaltet wurde. Chrome erlaubt Tab-Aufnahmen nur nach einem Klick auf das Symbol in diesem Tab. Zum Wechseln die Automatik im anderen Tab anhaken. | **alle Tabs**; es wird der erste Tab aufgenommen, der Ton abspielt |
+| Nach Seitenwechsel | Lädt der Tab eine ganz neue Seite, kann Chrome die Freigabe zurückziehen. Dann zeigt das Popup einen Hinweis, und ein Klick auf das Symbol genügt. | läuft weiter |
+
 ## Unterschiede Chrome / Firefox
 
 | | Chrome, Edge, Brave, Opera … | Firefox |
@@ -30,7 +45,7 @@ Weitere Funktionen:
 | Was wird aufgenommen | **alles**, was der Tab ausgibt: Videos, Musik, Web Audio, WebRTC-Anrufe | `<audio>`/`<video>`-Elemente (YouTube, Mediatheken, Podcasts …) und WebRTC-Streams an Media-Elementen |
 | Nicht erfasst | – | reine Web-Audio-Ausgaben (z. B. Spiele, manche Synthesizer); Medien von **fremden Domains ohne CORS** (sie spielen normal weiter, fehlen aber in der Aufnahme; das Popup zeigt die Anzahl an) |
 | Seitenwechsel im Tab | Aufnahme läuft weiter | Aufnahme läuft weiter, Abgriff wird automatisch neu eingefügt |
-| Getestet | automatisiert in Chromium (siehe unten) | von Hand in Firefox auf YouTube (ab Version 1.0.3); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
+| Getestet | automatisiert in Chromium, auch die Automatik (siehe unten) | von Hand in Firefox auf YouTube (ab Version 1.0.3); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
 
 **Diagnose (Firefox):** Klappt etwas nicht, im Popup unten „Diagnose“ aufklappen und „Diagnose kopieren“. Dort steht, in wie viele Frames der Abgriff eingefügt wurde, welche Audio-/Videoelemente er gefunden hat, wie viele Tonblöcke ankommen und welche Fehler auftraten.
 
@@ -77,8 +92,10 @@ audio-mitschnitt-erweiterung/
 │   ├── firefox/             background.* (Aufnahme, Download), tap.js (Abgriff in der Seite)
 │   └── icons/
 └── tests/
-    ├── *.test.mjs           Unit-Tests (node --test), MP3 wird Frame für Frame geprüft
+    ├── *.test.mjs           Unit-Tests (node --test): Mischer, MP3, Resampler, Automatik,
+    │                        Firefox-Hintergrundseite mit nachgebildeter API
     ├── e2e-chrome.mjs       echter Chromium: Erweiterung laden, Töne aufnehmen, MP3 analysieren
+    ├── e2e-chrome-automatik.mjs  echter Chromium: Automatik startet bei Ton, endet nach Stille
     └── e2e-abgriff.mjs      Firefox-Abgriff in Chromium mit nachgebildeter Erweiterungs-API
 ```
 

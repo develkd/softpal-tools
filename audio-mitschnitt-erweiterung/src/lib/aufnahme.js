@@ -75,7 +75,13 @@
   }
 
   class Aufnahme {
-    constructor({ bitrate = 192, sampleRate = 48000, titel = '', jetzt, lame, taktMs = 100 } = {}) {
+    /**
+     * @param {object} [o.automatik]  Automatik-Modus: {nachStille: Sekunden,
+     *   schwelleDb = -60}. Stille wird zurückgehalten und nur geschrieben, wenn
+     *   danach wieder Ton kommt; nach `nachStille` Sekunden ruft die Aufnahme
+     *   einmal `beiStille()` auf (dort beenden).
+     */
+    constructor({ bitrate = 192, sampleRate = 48000, titel = '', jetzt, lame, taktMs = 100, automatik = null } = {}) {
       this.sampleRate = sampleRate;
       this.mischer = new wurzel.Mischer({ sampleRate, jetzt });
       this._resampler = new Map(); // Quelle -> Resampler (falls andere Rate)
@@ -89,6 +95,45 @@
       this.pegel = -Infinity;
       this.info = '';
       this._timer = null;
+      this.automatik = automatik ? { schwelleDb: -60, ...automatik } : null;
+      this.beiStille = null;
+      this._stille = []; // zurückgehaltene stille Blöcke [links, rechts]
+      this._stilleFrames = 0;
+      this._tonFrames = 0;
+      this._stilleGemeldet = false;
+    }
+
+    /** Sekunden mit hörbarem Ton (Automatik: entscheidet über Verwerfen). */
+    get tonSekunden() {
+      return this._tonFrames / this.sampleRate;
+    }
+
+    _kodieren(links, rechts) {
+      if (!this.automatik) {
+        this.kodierer.kodieren(links, rechts);
+        return;
+      }
+      if (pegelDb(links, rechts) < this.automatik.schwelleDb) {
+        this._stille.push([links, rechts]);
+        this._stilleFrames += links.length;
+        if (!this._stilleGemeldet && this._stilleFrames >= this.automatik.nachStille * this.sampleRate) {
+          this._stilleGemeldet = true;
+          if (this.beiStille) setTimeout(() => this.beiStille(), 0);
+        }
+        // nicht unbegrenzt zurückhalten (z. B. wenn niemand beendet)
+        if (this._stilleFrames > 120 * this.sampleRate) this._stilleSchreiben();
+      } else {
+        this._stilleSchreiben();
+        this._stilleGemeldet = false;
+        this.kodierer.kodieren(links, rechts);
+        this._tonFrames += links.length;
+      }
+    }
+
+    _stilleSchreiben() {
+      for (const [l, r] of this._stille) this.kodierer.kodieren(l, r);
+      this._stille = [];
+      this._stilleFrames = 0;
     }
 
     starten() {
@@ -122,7 +167,7 @@
       if (!this.laeuft) return;
       const { links, rechts } = this.mischer.takt(this.pausiert);
       if (links.length) {
-        this.kodierer.kodieren(links, rechts);
+        this._kodieren(links, rechts);
         this.pegel = pegelDb(links, rechts);
       } else if (this.pausiert) {
         this.pegel = -Infinity;
@@ -139,13 +184,23 @@
       this.pausiert = false;
     }
 
-    /** Beendet die Aufnahme und liefert die MP3-Datei als Blob. */
-    stoppen() {
+    /**
+     * Beendet die Aufnahme und liefert die MP3-Datei als Blob.
+     * @param {object} [o]
+     * @param {boolean} [o.stilleVerwerfen] zurückgehaltene Stille am Ende weglassen
+     */
+    stoppen({ stilleVerwerfen = false } = {}) {
       if (this._timer) clearInterval(this._timer);
       this._timer = null;
       if (this.laeuft) {
         const { links, rechts } = this.mischer.abschliessen(this.pausiert);
-        this.kodierer.kodieren(links, rechts);
+        if (links.length) this._kodieren(links, rechts);
+        if (stilleVerwerfen) {
+          this._stille = [];
+          this._stilleFrames = 0;
+        } else {
+          this._stilleSchreiben();
+        }
         this.kodierer.abschliessen();
       }
       this.laeuft = false;
@@ -162,6 +217,7 @@
         titel: this.titel,
         dateiname: this.dateiname,
         info: this.info,
+        automatisch: Boolean(this.automatik),
       };
     }
   }

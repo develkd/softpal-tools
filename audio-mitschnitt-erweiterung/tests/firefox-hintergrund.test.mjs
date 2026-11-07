@@ -8,6 +8,7 @@ import { runInThisContext } from 'node:vm';
 import { aufnahmeModul, Resampler, sinus } from './hilfen.mjs';
 
 const TAB = 42;
+const speicher = {};
 const ereignisse = () => {
   const hoerer = [];
   return { addListener: (f) => hoerer.push(f), hoerer };
@@ -15,9 +16,9 @@ const ereignisse = () => {
 
 const api = {
   runtime: { onConnect: ereignisse(), onMessage: ereignisse(), getManifest: () => ({ version: 'test' }) },
-  tabs: { onUpdated: ereignisse(), onRemoved: ereignisse(), executeScript: null },
+  tabs: { onUpdated: ereignisse(), onRemoved: ereignisse(), executeScript: null, query: async () => [] },
   browserAction: { setBadgeText() {}, setBadgeBackgroundColor() {} },
-  storage: { local: { get: async () => ({}) } },
+  storage: { local: { get: async () => ({ ...speicher }) }, onChanged: ereignisse() },
   downloads: { onChanged: ereignisse(), download: null },
 };
 
@@ -122,4 +123,78 @@ test('Browser-interne Seite: klare Meldung, keine hängende Aufnahme', async () 
   } finally {
     api.tabs.executeScript = original;
   }
+});
+
+// ---- Automatik ------------------------------------------------------------
+async function einstellen(werte) {
+  Object.assign(speicher, werte);
+  await Promise.all(api.storage.onChanged.hoerer.map((f) => f({}, 'local')));
+}
+const hoerbar = (an) => api.tabs.onUpdated.hoerer.forEach((f) => f(TAB, { audible: an },
+  { id: TAB, url: 'https://www.youtube.com/watch?v=x', title: 'Video' }));
+
+async function tonLiefern(abgriff, sekunden, ton = true) {
+  let phase = 0;
+  for (let i = 0; i < Math.round(sekunden * 10); i++) {
+    const block = ton ? sinus(4410, { frequenz: 1000, sampleRate: 44100, phase }) : new Float32Array(4410);
+    phase += 4410;
+    abgriff.senden({ typ: 'pcm', l: block, r: block, rate: 44100 });
+    await warten(100);
+  }
+}
+
+test('Automatik: startet bei Ton, speichert nach Stille ohne Stille am Ende', async () => {
+  await einstellen({ automatik: true, nachStille: 0.6 });
+  const vorherAbgriffe = abgriffe.length;
+  const vorherDownloads = downloads.length;
+  hoerbar(true);
+  await warten(50);
+  assert.equal(abgriffe.length, vorherAbgriffe + 1, 'Aufnahme nicht automatisch gestartet');
+  const abgriff = abgriffe.at(-1);
+  let st = await nachricht({ typ: 'status' });
+  assert.equal(st.laeuft, true);
+  assert.equal(st.automatisch, true);
+
+  await tonLiefern(abgriff, 3.5);
+  await tonLiefern(abgriff, 1.5, false); // Stille -> beendet nach 0,6 s
+  await warten(200);
+  st = await nachricht({ typ: 'status' });
+  assert.equal(st.laeuft, false, 'nicht automatisch beendet');
+  assert.match(st.letzteMeldung, /Automatisch gespeichert/);
+  assert.equal(downloads.length, vorherDownloads + 1);
+  const mp3 = Buffer.from(await blobs.get(downloads.at(-1).url).arrayBuffer());
+  const { mp3Frames } = await import('./hilfen.mjs');
+  const dauer = (mp3Frames(mp3).length * 1152) / 44100;
+  assert.ok(dauer > 3.0 && dauer < 4.3, `Dauer ${dauer} (Stille am Ende nicht entfernt?)`);
+
+  // derselbe Tab ist weiter "hörbar": nicht sofort neu starten
+  hoerbar(true);
+  await warten(50);
+  assert.equal((await nachricht({ typ: 'status' })).laeuft, false);
+});
+
+test('Automatik: kurzer Ton wird verworfen; nach Stille startet der Tab wieder', async () => {
+  const vorherDownloads = downloads.length;
+  hoerbar(false); // Sperre aufheben
+  hoerbar(true);
+  await warten(50);
+  const abgriff = abgriffe.at(-1);
+  assert.equal((await nachricht({ typ: 'status' })).laeuft, true);
+  await tonLiefern(abgriff, 1);
+  await tonLiefern(abgriff, 1.5, false);
+  await warten(200);
+  const st = await nachricht({ typ: 'status' });
+  assert.equal(st.laeuft, false);
+  assert.match(st.letzteMeldung, /verworfen/);
+  assert.equal(downloads.length, vorherDownloads, 'kurze Aufnahme wurde gespeichert');
+});
+
+test('Automatik aus: hörbarer Tab startet nichts', async () => {
+  await einstellen({ automatik: false });
+  const vorher = abgriffe.length;
+  hoerbar(false);
+  hoerbar(true);
+  await warten(50);
+  assert.equal(abgriffe.length, vorher);
+  assert.equal((await nachricht({ typ: 'status' })).automatik, false);
 });

@@ -35,6 +35,7 @@ jobs:
       - name: End-to-End-Tests (Chromium)
         run: |
           xvfb-run -a node tests/e2e-chrome.mjs
+          xvfb-run -a node tests/e2e-chrome-automatik.mjs
           node tests/e2e-abgriff.mjs
       - name: Erweiterungen hochladen
         uses: actions/upload-artifact@v4

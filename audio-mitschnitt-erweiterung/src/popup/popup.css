@@ -29,6 +29,10 @@ button { font: inherit; font-weight: 600; padding: 9px 12px; border-radius: 8px;
 button.haupt { background: var(--knopf); color: var(--knopf-text); border-color: var(--knopf); }
 button.haupt.stopp { background: var(--rot); border-color: var(--rot); color: #fff; }
 button:disabled { opacity: .45; cursor: default; }
+label.automatik { display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px;
+  margin-top: 10px; padding: 8px 10px; border: 1px solid var(--rand); border-radius: 8px; cursor: pointer; }
+label.automatik input { margin-top: 3px; }
+label.automatik .klein { margin: 0; }
 .hinweis { min-height: 18px; margin: 10px 0 4px; color: var(--grau); font-size: 12px; }
 .hinweis.fehler { color: var(--rot); }
 details { border-top: 1px solid var(--rand); padding-top: 8px; margin-top: 4px; }

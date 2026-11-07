@@ -16,9 +16,16 @@ const offeneDownloads = new Map();
 // Diagnose: was kommt von den Abgriffen an?
 const diag = { eingefuegt: '', abgewiesen: [], frames: new Map() }; // id -> {diag, pcm}
 
+// Automatik: startet, sobald ein Tab Ton abspielt; endet nach Stille
+const MINDEST_TON_SEKUNDEN = 3; // kürzere automatische Aufnahmen verwerfen
+const einst = { automatik: false, nachStille: 5, bitrate: 192 };
+const gesperrt = new Set(); // Tabs, deren automatische Aufnahme gerade verworfen/beendet wurde
+let letzteMeldung = '';
+
 function abzeichen(an) {
-  browser.browserAction.setBadgeText({ text: an ? 'REC' : '' });
-  if (an) browser.browserAction.setBadgeBackgroundColor({ color: '#c62828' });
+  const text = an ? 'REC' : einst.automatik ? 'AUTO' : '';
+  browser.browserAction.setBadgeText({ text });
+  browser.browserAction.setBadgeBackgroundColor({ color: an ? '#c62828' : '#555555' });
 }
 
 // Aufnahme mit der Standardrate des Audiosystems (meist 44,1 oder 48 kHz),
@@ -69,14 +76,18 @@ function infoText() {
   return teile.join(' · ');
 }
 
-async function starten({ tabId: tab, bitrate, titel }) {
+async function starten({ tabId: tab, bitrate, titel, automatisch = false }) {
   if (aufnahme && aufnahme.laeuft) throw new Error('Es läuft bereits eine Aufnahme.');
   tabId = tab;
   quellenInfo.clear();
   diag.eingefuegt = '';
   diag.abgewiesen = [];
   diag.frames.clear();
-  aufnahme = new Aufnahme({ bitrate, titel, sampleRate: aufnahmeRate() });
+  aufnahme = new Aufnahme({
+    bitrate, titel, sampleRate: aufnahmeRate(),
+    automatik: automatisch ? { nachStille: einst.nachStille } : null,
+  });
+  if (automatisch) aufnahme.beiStille = () => automatischBeenden().catch(console.error);
   aufnahme.info = 'Suche Audio-/Videoelemente …';
   // Erst starten, dann einfügen: Der Abgriff verbindet sich schon während
   // executeScript und würde sonst als "keine Aufnahme aktiv" abgewiesen.
@@ -98,15 +109,19 @@ async function starten({ tabId: tab, bitrate, titel }) {
   return status();
 }
 
-async function stoppen() {
+async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
   if (!aufnahme || !aufnahme.laeuft) return { laeuft: false };
   for (const port of ports.values()) {
     try { port.postMessage({ typ: 'stopp' }); port.disconnect(); } catch (_) { /* Frame weg */ }
   }
   ports.clear();
-  const blob = aufnahme.stoppen();
-  const ergebnis = { ...aufnahme.status(), gespeichert: aufnahme.dateiname };
+  const blob = aufnahme.stoppen({ stilleVerwerfen });
   abzeichen(false);
+  if (verwerfen) {
+    tabId = null;
+    return { ...aufnahme.status(), verworfen: true };
+  }
+  const ergebnis = { ...aufnahme.status(), gespeichert: aufnahme.dateiname };
   const url = URL.createObjectURL(blob);
   const { fragen = false, unterordner = 'Mitschnitte' } = await browser.storage.local.get(['fragen', 'unterordner']);
   try {
@@ -144,10 +159,76 @@ function diagnoseText() {
 }
 
 function status() {
-  if (!aufnahme) return { laeuft: false, diagnose: diagnoseText() };
+  const auto = { automatikVerfuegbar: 'alle', automatik: einst.automatik, letzteMeldung };
+  if (!aufnahme) return { laeuft: false, ...auto, diagnose: diagnoseText() };
   if (aufnahme.laeuft) aufnahme.info = infoText();
-  return { ...aufnahme.status(), tabId, diagnose: diagnoseText() };
+  return { ...aufnahme.status(), tabId, ...auto, diagnose: diagnoseText() };
 }
+
+// ---- Automatik ------------------------------------------------------------
+function aufnehmbar(tab) {
+  return tab && /^(https?|file):/.test(tab.url || '');
+}
+
+async function automatischStarten(tab) {
+  if (!einst.automatik || (aufnahme && aufnahme.laeuft) || gesperrt.has(tab.id) || !aufnehmbar(tab)) return;
+  try {
+    await starten({ tabId: tab.id, bitrate: einst.bitrate, titel: tab.title || '', automatisch: true });
+    letzteMeldung = `Automatisch gestartet: ${tab.title || 'Tab'}`;
+  } catch (fehler) {
+    gesperrt.add(tab.id);
+    letzteMeldung = `Automatik: ${fehler.message || fehler}`;
+  }
+}
+
+async function automatischBeenden() {
+  if (!aufnahme || !aufnahme.laeuft || !aufnahme.automatik) return;
+  const tab = tabId;
+  const kurz = aufnahme.tonSekunden < MINDEST_TON_SEKUNDEN;
+  const erg = await stoppen({ stilleVerwerfen: true, verwerfen: kurz });
+  gesperrt.add(tab); // erst nach Stille -> Ton wieder automatisch aufnehmen
+  letzteMeldung = kurz
+    ? `Kurzer Ton (unter ${MINDEST_TON_SEKUNDEN} s) verworfen`
+    : `Automatisch gespeichert: ${erg.gespeichert}`;
+  await naechstenHoerbarenTabStarten();
+}
+
+async function naechstenHoerbarenTabStarten() {
+  if (!einst.automatik || (aufnahme && aufnahme.laeuft)) return;
+  const tabs = await browser.tabs.query({ audible: true });
+  const tab = tabs.find((t) => !gesperrt.has(t.id) && aufnehmbar(t));
+  if (tab) await automatischStarten(tab);
+}
+
+function hoerbarGeaendert(tab, hoerbar) {
+  if (!hoerbar) {
+    gesperrt.delete(tab.id);
+    return;
+  }
+  automatischStarten(tab);
+}
+
+async function einstellungenLaden() {
+  const gespeichert = await browser.storage.local.get(['automatik', 'nachStille', 'bitrate']);
+  einst.automatik = Boolean(gespeichert.automatik);
+  einst.nachStille = Number(gespeichert.nachStille) || 5;
+  einst.bitrate = Number(gespeichert.bitrate) || 192;
+  if (!aufnahme || !aufnahme.laeuft) abzeichen(false);
+}
+
+browser.storage.onChanged.addListener(async (aenderung, bereich) => {
+  if (bereich !== 'local') return;
+  const warAn = einst.automatik;
+  await einstellungenLaden();
+  if (einst.automatik && !warAn) {
+    gesperrt.clear();
+    letzteMeldung = 'Automatik an – wartet auf Ton';
+    await naechstenHoerbarenTabStarten();
+  } else if (!einst.automatik && warAn) {
+    letzteMeldung = '';
+  }
+});
+einstellungenLaden();
 
 browser.downloads.onChanged.addListener((delta) => {
   if (!offeneDownloads.has(delta.id) || !delta.state) return;
@@ -189,14 +270,22 @@ browser.runtime.onConnect.addListener((port) => {
 });
 
 // Neu geladene Seite im aufgenommenen Tab: Abgriff erneut einfügen
-browser.tabs.onUpdated.addListener((tab, aenderung) => {
+browser.tabs.onUpdated.addListener((tab, aenderung, tabInfo) => {
   if (tab === tabId && aufnahme && aufnahme.laeuft && aenderung.status === 'complete') {
     abgriffEinfuegen();
   }
+  if ('audible' in aenderung) hoerbarGeaendert(tabInfo || { id: tab }, aenderung.audible);
 });
 
 browser.tabs.onRemoved.addListener((tab) => {
-  if (tab === tabId && aufnahme && aufnahme.laeuft) stoppen().catch(console.error);
+  gesperrt.delete(tab);
+  if (tab === tabId && aufnahme && aufnahme.laeuft) {
+    const auto = Boolean(aufnahme.automatik);
+    const kurz = auto && aufnahme.tonSekunden < MINDEST_TON_SEKUNDEN;
+    stoppen({ stilleVerwerfen: auto, verwerfen: kurz })
+      .then(() => naechstenHoerbarenTabStarten())
+      .catch(console.error);
+  }
 });
 
 browser.runtime.onMessage.addListener(async (nachricht) => {
@@ -204,8 +293,16 @@ browser.runtime.onMessage.addListener(async (nachricht) => {
   try {
     switch (nachricht.typ) {
       case 'starten': return await starten(nachricht);
-      case 'stoppen': return await stoppen();
+      case 'stoppen': {
+        // von Hand beendet: Tab erst nach Stille wieder automatisch aufnehmen
+        if (tabId != null) gesperrt.add(tabId);
+        return await stoppen();
+      }
       case 'status': return status();
+      case 'automatik':
+        await browser.storage.local.set({ automatik: Boolean(nachricht.an) });
+        await einstellungenLaden();
+        return status();
       case 'pausieren': if (aufnahme) aufnahme.pausieren(); return status();
       case 'fortsetzen': if (aufnahme) aufnahme.fortsetzen(); return status();
       default: throw new Error(`Unbekannte Nachricht: ${nachricht.typ}`);

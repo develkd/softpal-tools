@@ -58,9 +58,45 @@ function anzeigen(st) {
   $('pause').textContent = st.pausiert ? '▶ Weiter' : '❚❚ Pause';
   $('bitrate').disabled = laeuft;
   if (laeuft && st.info && !$('hinweis').classList.contains('fehler')) hinweis(st.info);
+  automatikAnzeigen(st);
   if (st.diagnose) {
     $('diagnose').hidden = false;
     $('diagnose-text').textContent = st.diagnose;
+  }
+}
+
+function automatikAnzeigen(st) {
+  if (!st.automatikVerfuegbar) return;
+  const kasten = $('automatik');
+  const fuerDiesenTab = st.automatikVerfuegbar === 'alle' || (aktiverTab && st.autoTabId === aktiverTab.id);
+  if (!beschaeftigt) kasten.checked = Boolean(st.automatik && fuerDiesenTab);
+  let text;
+  if (st.automatikVerfuegbar === 'alle') {
+    text = 'in allen Tabs: startet, sobald Ton läuft, endet nach Stille';
+  } else if (st.automatik && !fuerDiesenTab) {
+    text = 'ist für einen anderen Tab aktiv – hier anhaken, um zu diesem Tab zu wechseln';
+  } else {
+    text = 'in diesem Tab: startet, sobald Ton läuft, endet nach Stille';
+  }
+  $('automatik-text').textContent = text;
+  if (!st.laeuft && st.letzteMeldung && !$('hinweis').classList.contains('fehler')
+      && !$('hinweis').textContent.startsWith('Gespeichert')) {
+    hinweis(st.letzteMeldung);
+  }
+}
+
+async function automatikUmschalten() {
+  beschaeftigt = true;
+  try {
+    hinweis('');
+    anzeigen(await senden('automatik', {
+      an: $('automatik').checked, tabId: aktiverTab.id, titel: aktiverTab.title || '',
+    }));
+  } catch (fehler) {
+    hinweis(fehler.message, true);
+  } finally {
+    beschaeftigt = false;
+    await aktualisieren();
   }
 }
 
@@ -104,9 +140,11 @@ async function pauseUmschalten() {
 }
 
 async function einstellungenLaden() {
-  const { bitrate = 192, fragen = false } = await api.storage.local.get(['bitrate', 'fragen']);
+  const { bitrate = 192, fragen = false, nachStille = 5 } = await api.storage.local.get(['bitrate', 'fragen', 'nachStille']);
   $('bitrate').value = String(bitrate);
   $('fragen').checked = Boolean(fragen);
+  $('nach-stille').value = String(nachStille);
+  $('nach-stille').addEventListener('change', () => api.storage.local.set({ nachStille: Number($('nach-stille').value) }));
   $('bitrate').addEventListener('change', () => api.storage.local.set({ bitrate: Number($('bitrate').value) }));
   $('fragen').addEventListener('change', () => api.storage.local.set({ fragen: $('fragen').checked }));
 }
@@ -121,6 +159,7 @@ async function init() {
   }
   $('start').addEventListener('click', startStopp);
   $('pause').addEventListener('click', pauseUmschalten);
+  $('automatik').addEventListener('change', automatikUmschalten);
   $('diagnose-kopieren').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('diagnose-text').textContent);
