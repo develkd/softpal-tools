@@ -11,7 +11,9 @@ Erweiterung für **Chrome, Edge (und andere Chromium-Browser) sowie Firefox**, d
 1. Im Tab, dessen Ton aufgenommen werden soll, auf das **Symbol der Erweiterung** klicken.
 2. **„● Aufnahme starten“**. Das Symbol zeigt nun `REC`. Das Popup darf geschlossen werden, die Aufnahme läuft weiter.
 3. Zum Beenden erneut das Symbol anklicken: **„■ Beenden & speichern“**.
-4. Die Datei landet als `Mitschnitt_JJJJ-MM-TT_hh-mm-ss.mp3` unter **Downloads/Mitschnitte/**. Mit der Einstellung „Speicherort jedes Mal fragen“ wird stattdessen nachgefragt.
+4. Die Datei landet unter **Downloads/Mitschnitte/** und heißt wie der Tab, z. B. „(3) Mein Lied - YouTube“ → `Mein Lied.mp3`. Mit der Einstellung „Speicherort jedes Mal fragen“ wird stattdessen nachgefragt.
+
+**Dateinamen:** In Dateinamen verbotene Zeichen (`/ \ : * ? " < > |`) werden entfernt, ebenso der Zusatz „- YouTube“ und der Benachrichtigungszähler „(3)“. Sehr lange Titel werden auf 120 Zeichen gekürzt. Bei gleichem Namen hängt der Browser „(1)“, „(2)“ … an. Lehnt der Browser einen Namen ab (z. B. Umlaute unter Linux ohne UTF-8), wird die ASCII-Form (`Größe` → `Groesse`) verwendet, notfalls `Mitschnitt_JJJJ-MM-TT_hh-mm-ss.mp3`. Bei der Automatik zählt der Titel, der beim ersten Ton der jeweiligen Datei im Tab steht, so heißt in einer Playlist jede Datei wie ihr Video.
 
 Weitere Funktionen:
 

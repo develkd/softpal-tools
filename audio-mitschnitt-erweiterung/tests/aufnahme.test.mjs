@@ -88,3 +88,46 @@ test('Stoppen ohne Daten liefert Stille in Länge der Laufzeit', async () => {
   const frames = mp3Frames(Buffer.from(await blob.arrayBuffer()));
   assert.ok(Math.abs((frames.length * 1152) / SR - 1.5) < 0.1);
 });
+
+test('Dateiname aus dem Tabtitel', () => {
+  const { dateinameAusTitel } = aufnahmeModul;
+  const d = new Date(2026, 10, 7, 9, 5, 3);
+  const faelle = [
+    ['(3) Mein Lied - YouTube', 'Mein Lied.mp3'],
+    ['Künstler – Titel (Live) | YouTube Music', 'Künstler – Titel (Live).mp3'],
+    ['AC/DC: Back in Black?', 'AC DC Back in Black.mp3'],
+    ['  ..versteckt  ', 'versteckt.mp3'],
+    ['Ende mit Punkt.', 'Ende mit Punkt.mp3'],
+    ['Zeile\nUmbruch\tTab', 'ZeileUmbruchTab.mp3'],
+    ['Podcast <Folge 12> "Gäste"', 'Podcast Folge 12 Gäste.mp3'],
+    ['CON', '_CON.mp3'],
+    ['🎵 Musik 🎶', '🎵 Musik 🎶.mp3'],
+    ['', 'Mitschnitt_2026-11-07_09-05-03.mp3'],
+    [null, 'Mitschnitt_2026-11-07_09-05-03.mp3'],
+    ['???', 'Mitschnitt_2026-11-07_09-05-03.mp3'],
+    ['YouTube', 'YouTube.mp3'],
+  ];
+  for (const [titel, erwartet] of faelle) assert.equal(dateinameAusTitel(titel, d), erwartet, String(titel));
+  const lang = dateinameAusTitel('x'.repeat(300), d);
+  assert.equal(lang, `${'x'.repeat(120)}.mp3`);
+});
+
+test('Aufnahme: Dateiname folgt dem Titel, Ersatzname mit Datum', () => {
+  const a = new Aufnahme({ titel: '(1) Erstes Video - YouTube', taktMs: 0 });
+  assert.equal(a.dateiname, 'Erstes Video.mp3');
+  a.titel = 'Zweites Video - YouTube';
+  assert.equal(a.dateiname, 'Zweites Video.mp3');
+  assert.match(a.ersatzname, /^Mitschnitt_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.mp3$/);
+});
+
+test('ASCII-Ausweichname und Reihenfolge der Namen', () => {
+  const { dateinameAscii } = aufnahmeModul;
+  assert.equal(dateinameAscii('Künstler – Titel (Live) | YouTube Music'), 'Kuenstler - Titel (Live).mp3');
+  assert.equal(dateinameAscii('Café Größe 🎵'), 'Cafe Groesse.mp3');
+  const a = new Aufnahme({ titel: 'Straße 🎶', taktMs: 0 });
+  assert.equal(a.dateinamen.length, 3);
+  assert.equal(a.dateinamen[0], 'Straße 🎶.mp3');
+  assert.equal(a.dateinamen[1], 'Strasse.mp3');
+  assert.match(a.dateinamen[2], /^Mitschnitt_/);
+  assert.equal(new Aufnahme({ titel: 'Plain', taktMs: 0 }).dateinamen.length, 2); // ASCII = Titel
+});

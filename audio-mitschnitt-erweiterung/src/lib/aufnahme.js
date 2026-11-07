@@ -26,6 +26,35 @@
       `_${zweistellig(d.getHours())}-${zweistellig(d.getMinutes())}-${zweistellig(d.getSeconds())}.mp3`;
   }
 
+  /**
+   * Dateiname aus dem Tabtitel, z. B. "(3) Mein Lied - YouTube" -> "Mein Lied.mp3".
+   * Ohne verwertbaren Titel: Datum/Uhrzeit wie dateiname().
+   */
+  function dateinameAusTitel(titel, datum = new Date()) {
+    let t = String(titel || '')
+      .replace(/^\(\d+\+?\)\s*/, '') // Benachrichtigungszähler "(3) "
+      .replace(/\s+[-–—|]\s+YouTube( Music)?\s*$/i, '')
+      .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '') // Steuer-/Richtungszeichen
+      .replace(/[<>:"/\\|?*]+/g, ' ') // in Dateinamen verboten
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^[.~\s]+|[.\s]+$/g, ''); // nicht mit Punkt/Tilde beginnen, nicht mit Punkt enden
+    if ([...t].length > 120) t = [...t].slice(0, 120).join('').trim().replace(/[.\s]+$/, '');
+    if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(t)) t = `_${t}`; // reservierte Windows-Namen
+    return t ? `${t}.mp3` : dateiname(datum);
+  }
+
+  /** Nur ASCII: "Künstler – Titel" -> "Kuenstler - Titel" (falls Umlaute abgelehnt werden). */
+  function dateinameAscii(titel, datum = new Date()) {
+    const umschrift = { ä: 'ae', ö: 'oe', ü: 'ue', Ä: 'Ae', Ö: 'Oe', Ü: 'Ue', ß: 'ss', '–': '-', '—': '-', '’': "'", '‘': "'", '“': '', '”': '', '„': '' };
+    const ascii = String(titel || '')
+      .replace(/[äöüÄÖÜß–—’‘“”„]/g, (z) => umschrift[z])
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '') // Akzente (é -> e)
+      .replace(/[^\x20-\x7e]/g, ''); // übrige Nicht-ASCII-Zeichen (Emoji usw.)
+    return dateinameAusTitel(ascii, datum);
+  }
+
   function pegelDb(l, r) {
     let spitze = 0;
     for (let i = 0; i < l.length; i++) {
@@ -91,7 +120,7 @@
       this.titel = titel;
       this.bitrate = bitrate;
       this.taktMs = taktMs;
-      this.dateiname = dateiname();
+      this.startzeit = new Date();
       this.pausiert = false;
       this.laeuft = false;
       this.pegel = -Infinity;
@@ -104,6 +133,21 @@
       this._stilleFrames = 0;
       this._tonFrames = 0;
       this._stilleGemeldet = false;
+    }
+
+    /** Dateiname aus dem (aktuellen) Tabtitel, sonst Datum/Uhrzeit des Starts. */
+    get dateiname() {
+      return dateinameAusTitel(this.titel, this.startzeit);
+    }
+
+    /** Ausweichname, falls der Browser den Titel-Dateinamen ablehnt. */
+    get ersatzname() {
+      return dateiname(this.startzeit);
+    }
+
+    /** Namen in der Reihenfolge, in der sie beim Speichern probiert werden. */
+    get dateinamen() {
+      return [...new Set([this.dateiname, dateinameAscii(this.titel, this.startzeit), this.ersatzname])];
     }
 
     /** Sekunden mit hörbarem Ton (Automatik: entscheidet über Verwerfen). */
@@ -237,7 +281,7 @@
     }
   }
 
-  const api = { Aufnahme, Mp3Kodierer, floatZuInt16, dateiname, pegelDb, ERLAUBTE_BITRATEN };
+  const api = { Aufnahme, Mp3Kodierer, floatZuInt16, dateiname, dateinameAusTitel, dateinameAscii, pegelDb, ERLAUBTE_BITRATEN };
   Object.assign(wurzel, { Aufnahme, Mp3Kodierer, ERLAUBTE_BITRATEN });
   wurzel.audioMitschnitt = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -147,6 +147,34 @@ try {
   assert.deepEqual(folge.filter((v) => v !== 'still'), [1000, 2000], 'Töne fehlen oder falsch');
   assert.equal(verlauf.filter((v) => v === 1000).length >= 3, true);
   assert.equal(verlauf.filter((v) => v === 2000).length >= 3, true);
+  // Akzeptiert Chrome die aus Tabtiteln erzeugten Dateinamen? Probiert wird wie in
+  // chrome/background.js: Titel, ASCII-Titel, Datum. Mit UTF-8 (normale Desktops)
+  // muss schon der Titel selbst klappen.
+  const { Aufnahme } = await import('./hilfen.mjs').then((h) => h.aufnahmeModul);
+  const titel = ['(3) Mein Lied - YouTube', 'Künstler – Titel (Live) | YouTube Music', 'AC/DC: Back in Black?',
+    '  ..versteckt  ', 'Podcast <Folge 12> "Gäste"', 'CON', '🎵 Musik 🎶', 'x'.repeat(300), 'Ende mit Punkt.'];
+  const ketten = titel.map((t) => new Aufnahme({ titel: t, taktMs: 0 }).dateinamen);
+  const gewaehlt = await sw.evaluate(async (liste) => {
+    const aus = [];
+    for (const namen of liste) {
+      let ok = null;
+      for (const name of namen) {
+        try {
+          await chrome.downloads.download({ url: 'data:audio/mpeg;base64,AAAA', filename: `Mitschnitte/${name}`, conflictAction: 'uniquify' });
+          ok = name;
+          break;
+        } catch (_) { /* nächster Name */ }
+      }
+      aus.push(ok);
+    }
+    return aus;
+  }, ketten);
+  const utf8 = /utf-?8/i.test(`${process.env.LC_ALL || ''}${process.env.LC_CTYPE || ''}${process.env.LANG || ''}`);
+  for (const [i, name] of gewaehlt.entries()) {
+    assert.ok(name, `nicht speicherbar: ${titel[i]}`);
+    if (utf8) assert.equal(name, ketten[i][0], `Titelname abgelehnt: ${ketten[i][0]}`);
+  }
+  console.log(`Dateinamen (${utf8 ? 'UTF-8' : 'ohne UTF-8'}): ${gewaehlt.slice(0, 3).join(' | ')} …`);
   console.log(`E2E OK (Screenshot: ${join(profil, 'popup.png')})`);
 } finally {
   await context.close();

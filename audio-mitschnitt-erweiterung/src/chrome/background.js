@@ -154,16 +154,23 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 // Download, sobald das Offscreen-Dokument die Datei fertig hat
 const offeneDownloads = new Map(); // downloadId -> blob-URL
 
-async function speichern({ url, dateiname }) {
+/** Speichert unter dem ersten Namen, den Chrome akzeptiert (Titel, ASCII-Titel, Datum). */
+async function speichern({ url, dateinamen }) {
   const { fragen = false, unterordner = 'Mitschnitte' } = await chrome.storage.local.get(['fragen', 'unterordner']);
-  const id = await chrome.downloads.download({
-    url,
-    filename: unterordner ? `${unterordner}/${dateiname}` : dateiname,
-    saveAs: Boolean(fragen),
-    conflictAction: 'uniquify',
-  });
-  offeneDownloads.set(id, url);
-  return id;
+  const pfad = (name) => (unterordner ? `${unterordner}/${name}` : name);
+  let letzterFehler = null;
+  for (const name of dateinamen) {
+    try {
+      const id = await chrome.downloads.download({
+        url, filename: pfad(name), saveAs: Boolean(fragen), conflictAction: 'uniquify',
+      });
+      offeneDownloads.set(id, url);
+      return { id, name };
+    } catch (fehler) {
+      letzterFehler = fehler; // z. B. "Invalid filename" -> nächsten Namen probieren
+    }
+  }
+  throw letzterFehler;
 }
 
 chrome.downloads.onChanged.addListener(async (delta) => {
@@ -204,16 +211,21 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         abzeichen(false);
         return antwort;
       }
-      case 'ton': // vom Offscreen-Dokument: automatische Aufnahme hat Ton
-        abzeichen(true);
-        return {};
+      case 'ton': { // vom Offscreen-Dokument: automatische Aufnahme hat Ton
+        if (nachricht.aktuell !== false) abzeichen(true);
+        const tab = nachricht.tabId != null ? await chrome.tabs.get(nachricht.tabId).catch(() => null) : null;
+        return { titel: tab && tab.title ? tab.title : '' };
+      }
       case 'fertig': // vom Offscreen-Dokument: Datei liegt bereit
         // weiter: Automatik teilt nur die Datei, Tab-Aufnahme läuft weiter
         abzeichen(nachricht.weiter ? 'wartet' : false);
-        if (nachricht.automatisch) {
-          await meldung(`Automatisch gespeichert: ${nachricht.dateiname}${nachricht.weiter ? ' – wartet auf Ton' : ''}`);
+        {
+          const { id, name } = await speichern(nachricht);
+          if (nachricht.automatisch) {
+            await meldung(`Automatisch gespeichert: ${name}${nachricht.weiter ? ' – wartet auf Ton' : ''}`);
+          }
+          return { downloadId: id, name };
         }
-        return { downloadId: await speichern(nachricht) };
       case 'verworfen': // vom Offscreen-Dokument: automatische Aufnahme ohne/zu kurzer Ton
         abzeichen(nachricht.weiter ? 'wartet' : false);
         if (nachricht.mitTon) {

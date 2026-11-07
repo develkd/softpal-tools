@@ -115,26 +115,38 @@ function neueAufnahme({ bitrate, titel, automatisch, sampleRate = aufnahmeRate()
   });
   if (automatisch) {
     a.beiStille = () => automatischTeilen().catch(console.error);
-    a.beiErstemTon = () => { if (aufnahme === a) abzeichen(true); };
+    a.beiErstemTon = () => {
+      if (aufnahme === a) abzeichen(true);
+      // Playlist: Datei nach dem Titel benennen, der beim ersten Ton im Tab steht
+      if (tabId != null) {
+        browser.tabs.get(tabId).then((t) => { if (t && t.title) a.titel = t.title; }).catch(() => {});
+      }
+    };
   }
   return a;
 }
 
-async function blobSpeichern(blob, dateiname) {
+/** Speichert unter dem ersten Namen, den der Browser akzeptiert (Titel, ASCII-Titel, Datum). */
+async function blobSpeichern(blob, namen) {
   const url = URL.createObjectURL(blob);
   const { fragen = false, unterordner = 'Mitschnitte' } = await browser.storage.local.get(['fragen', 'unterordner']);
-  try {
-    const id = await browser.downloads.download({
-      url,
-      filename: unterordner ? `${unterordner}/${dateiname}` : dateiname,
-      saveAs: Boolean(fragen),
-      conflictAction: 'uniquify',
-    });
-    offeneDownloads.set(id, url);
-  } catch (fehler) {
-    URL.revokeObjectURL(url);
-    if (!/canceled/i.test(String(fehler))) throw fehler;
+  const pfad = (name) => (unterordner ? `${unterordner}/${name}` : name);
+  let letzterFehler = null;
+  for (const name of namen) {
+    try {
+      const id = await browser.downloads.download({
+        url, filename: pfad(name), saveAs: Boolean(fragen), conflictAction: 'uniquify',
+      });
+      offeneDownloads.set(id, url);
+      return name;
+    } catch (fehler) {
+      if (/canceled/i.test(String(fehler))) { letzterFehler = null; break; }
+      letzterFehler = fehler; // Name abgelehnt -> nächsten probieren
+    }
   }
+  URL.revokeObjectURL(url);
+  if (letzterFehler) throw letzterFehler;
+  return null;
 }
 
 async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
@@ -149,8 +161,8 @@ async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
     tabId = null;
     return { ...aufnahme.status(), verworfen: true };
   }
-  const ergebnis = { ...aufnahme.status(), gespeichert: aufnahme.dateiname };
-  await blobSpeichern(blob, aufnahme.dateiname);
+  const name = await blobSpeichern(blob, aufnahme.dateinamen);
+  const ergebnis = { ...aufnahme.status(), gespeichert: name || aufnahme.dateiname };
   tabId = null;
   return ergebnis;
 }
@@ -234,8 +246,8 @@ async function automatischTeilen() {
     letzteMeldung = `Kurzer Ton (unter ${einst.mindestTon} s) verworfen – wartet auf Ton`;
     return;
   }
-  await blobSpeichern(blob, alt.dateiname);
-  letzteMeldung = `Automatisch gespeichert: ${alt.dateiname} – wartet auf Ton`;
+  const name = await blobSpeichern(blob, alt.dateinamen);
+  letzteMeldung = `Automatisch gespeichert: ${name || alt.dateiname} – wartet auf Ton`;
 }
 
 async function naechstenHoerbarenTabStarten() {

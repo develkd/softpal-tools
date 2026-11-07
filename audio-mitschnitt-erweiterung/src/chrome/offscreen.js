@@ -22,7 +22,11 @@ function neueAufnahme({ bitrate, titel, automatisch }) {
   if (automatisch) {
     a.beiStille = () => teilen().catch(console.error);
     a.beiErstemTon = () => {
-      if (aufnahme === a) chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'ton' }).catch(() => {});
+      // Service Worker setzt das Symbol und liefert den aktuellen Tabtitel
+      // (Playlist: Datei nach dem Titel benennen, der beim ersten Ton im Tab steht)
+      chrome.runtime.sendMessage({ ziel: 'hintergrund', typ: 'ton', tabId, aktuell: aufnahme === a })
+        .then((antwort) => { if (antwort && antwort.titel) a.titel = antwort.titel; })
+        .catch(() => {});
     };
   }
   return a;
@@ -45,7 +49,7 @@ async function teilen() {
   const url = URL.createObjectURL(blob);
   offeneUrls.add(url);
   await chrome.runtime.sendMessage({
-    ziel: 'hintergrund', typ: 'fertig', url, dateiname: alt.dateiname, tabId, automatisch: true, weiter: true,
+    ziel: 'hintergrund', typ: 'fertig', url, dateinamen: alt.dateinamen, tabId, automatisch: true, weiter: true,
   });
 }
 
@@ -109,11 +113,11 @@ async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
   const url = URL.createObjectURL(blob);
   offeneUrls.add(url);
   const antwort = await chrome.runtime.sendMessage({
-    ziel: 'hintergrund', typ: 'fertig', url, dateiname: aufnahme.dateiname, tabId,
+    ziel: 'hintergrund', typ: 'fertig', url, dateinamen: aufnahme.dateinamen, tabId,
     automatisch: Boolean(aufnahme.automatik),
   });
   if (antwort && antwort.fehler) throw new Error(antwort.fehler);
-  return { ...status, gespeichert: aufnahme.dateiname };
+  return { ...status, gespeichert: (antwort && antwort.name) || aufnahme.dateiname };
 }
 
 function status() {

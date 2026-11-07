@@ -9,6 +9,8 @@ import { aufnahmeModul, Resampler, sinus } from './hilfen.mjs';
 
 const TAB = 42;
 const speicher = {};
+let tabTitel = 'Video';
+let ablehnen = null; // Dateiname, den downloads.download ablehnen soll
 const ereignisse = () => {
   const hoerer = [];
   return { addListener: (f) => hoerer.push(f), hoerer };
@@ -16,7 +18,8 @@ const ereignisse = () => {
 
 const api = {
   runtime: { onConnect: ereignisse(), onMessage: ereignisse(), getManifest: () => ({ version: 'test' }) },
-  tabs: { onUpdated: ereignisse(), onRemoved: ereignisse(), executeScript: null, query: async () => [] },
+  tabs: { onUpdated: ereignisse(), onRemoved: ereignisse(), executeScript: null, query: async () => [],
+    get: async (id) => ({ id, title: tabTitel }) },
   browserAction: { setBadgeText() {}, setBadgeBackgroundColor() {} },
   storage: { local: { get: async () => ({ ...speicher }) }, onChanged: ereignisse() },
   downloads: { onChanged: ereignisse(), download: null },
@@ -51,7 +54,11 @@ api.tabs.executeScript = async (tabId, { file }) => {
   return [undefined];
 };
 const downloads = [];
-api.downloads.download = async (opt) => { downloads.push(opt); return downloads.length; };
+api.downloads.download = async (opt) => {
+  if (ablehnen && opt.filename.endsWith(ablehnen)) throw new Error('Invalid filename');
+  downloads.push(opt);
+  return downloads.length;
+};
 
 globalThis.browser = api;
 globalThis.AudioContext = class { constructor() { this.sampleRate = 44100; } close() {} };
@@ -96,7 +103,8 @@ test('Abgriff, der sich beim Einfügen verbindet, wird angenommen und aufgenomme
   assert.equal(ende.laeuft, false);
   assert.deepEqual(abgriff.vonHintergrund, [{ typ: 'stopp' }]);
   assert.equal(downloads.length, 1);
-  assert.match(downloads[0].filename, /^Mitschnitte\/Mitschnitt_.*\.mp3$/);
+  assert.equal(downloads[0].filename, 'Mitschnitte/Test.mp3', 'Dateiname nicht aus dem Tabtitel');
+  assert.equal(ende.gespeichert, 'Test.mp3');
 
   // Inhalt prüfen: MP3 darf nicht still sein
   const blob = blobs.get(downloads[0].url);
@@ -221,5 +229,46 @@ test('Einstellung "nachStille" wird auf mindestens 0,5 s begrenzt', async () => 
   assert.equal(downloads.length, vorherDownloads, 'Grenze 0,5 s nicht beachtet');
   await tonLiefern(abgriff, 0.2, false);
   assert.equal(downloads.length, vorherDownloads + 1);
+  await einstellen({ automatik: false });
+});
+
+test('Automatik/Playlist: jede Datei heißt wie der Titel beim ersten Ton', async () => {
+  await einstellen({ automatik: true, nachStille: 0.5, mindestTon: 1 });
+  tabTitel = '(2) Titel Eins - YouTube';
+  hoerbar(false);
+  hoerbar(true);
+  await warten(50);
+  const abgriff = abgriffe.at(-1);
+  const vorher = downloads.length;
+  await tonLiefern(abgriff, 1.5);
+  tabTitel = 'Titel Zwei - YouTube'; // nächstes Video lädt während der Pause
+  await tonLiefern(abgriff, 1, false);
+  await tonLiefern(abgriff, 1.5);
+  await tonLiefern(abgriff, 1, false);
+  const namen = downloads.slice(vorher).map((d) => d.filename);
+  assert.deepEqual(namen, ['Mitschnitte/Titel Eins.mp3', 'Mitschnitte/Titel Zwei.mp3']);
+});
+
+test('lehnt der Browser Umlaute ab, wird der ASCII-Titel verwendet', async () => {
+  const abgriff = abgriffe.at(-1);
+  tabTitel = 'Größe – Live';
+  ablehnen = 'Größe – Live.mp3';
+  const vorher = downloads.length;
+  await tonLiefern(abgriff, 1.5);
+  await tonLiefern(abgriff, 1, false);
+  ablehnen = null;
+  assert.deepEqual(downloads.slice(vorher).map((d) => d.filename), ['Mitschnitte/Groesse - Live.mp3']);
+});
+
+test('lehnt der Browser den Titel-Dateinamen ab, wird Datum/Uhrzeit verwendet', async () => {
+  const abgriff = abgriffe.at(-1);
+  tabTitel = 'Abgelehnt';
+  ablehnen = 'Abgelehnt.mp3';
+  const vorher = downloads.length;
+  await tonLiefern(abgriff, 1.5);
+  await tonLiefern(abgriff, 1, false);
+  ablehnen = null;
+  assert.equal(downloads.length, vorher + 1);
+  assert.match(downloads.at(-1).filename, /^Mitschnitte\/Mitschnitt_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.mp3$/);
   await einstellen({ automatik: false });
 });
