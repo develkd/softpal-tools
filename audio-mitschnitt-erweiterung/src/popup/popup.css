@@ -12,6 +12,7 @@ body { margin: 0; width: 340px; padding: 14px 16px 12px; background: var(--bg); 
        font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; }
 header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 h1 { font-size: 15px; margin: 0; font-weight: 650; }
+.version { margin-left: auto; color: var(--grau); font-size: 11px; font-variant-numeric: tabular-nums; }
 .quelle .beschriftung { color: var(--grau); font-size: 12px; }
 .quelle .titel { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .anzeige { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; }

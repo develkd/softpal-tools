@@ -150,6 +150,7 @@ async function einstellungenLaden() {
 }
 
 async function init() {
+  $('version').textContent = `Version ${api.runtime.getManifest().version}`;
   const parameter = new URLSearchParams(location.search);
   if (parameter.has('tab')) {
     // für automatische Tests: Popup als Tab für einen bestimmten Ziel-Tab öffnen
