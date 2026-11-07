@@ -3,9 +3,8 @@
 // Aufruf: npm run test:e2e   (braucht Playwright + Chromium; unter Linux ohne
 // Bildschirm mit xvfb-run starten)
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -38,26 +37,31 @@ const TESTSEITE = `<!doctype html><meta charset="utf-8"><title>Tontest</title>
   };
 </script>`;
 
-function frequenzVerlauf(datei) {
-  const roh = execFileSync('ffmpeg', ['-v', 'error', '-i', datei, '-ac', '1', '-ar', '8000', '-f', 'f32le', '-']);
-  const x = new Float32Array(roh.buffer, roh.byteOffset, roh.length / 4);
-  const sr = 8000;
-  const verlauf = [];
-  for (let start = 0; start + sr / 2 <= x.length; start += sr / 2) {
-    const seg = x.subarray(start, start + sr / 2);
-    let spitze = 0;
-    for (const v of seg) spitze = Math.max(spitze, Math.abs(v));
-    if (spitze < 0.02) { verlauf.push('still'); continue; }
-    // Goertzel: Energie bei 1000 bzw. 2000 Hz -> stärkerer Ton gewinnt
-    const energie = (f) => {
+// MP3 im Browser dekodieren (kein ffmpeg nötig) und je 0,5 s einordnen:
+// 'still', 1000 oder 2000 (stärkerer Ton per Goertzel)
+async function frequenzVerlauf(seite, mp3) {
+  return seite.evaluate(async (b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const puffer = await new OfflineAudioContext(1, 8000, 8000).decodeAudioData(bytes.buffer);
+    const x = puffer.getChannelData(0);
+    const sr = puffer.sampleRate;
+    const energie = (seg, f) => {
       const k = 2 * Math.cos((2 * Math.PI * f) / sr);
       let s1 = 0; let s2 = 0;
       for (const v of seg) { const s0 = v + k * s1 - s2; s2 = s1; s1 = s0; }
       return s1 * s1 + s2 * s2 - k * s1 * s2;
     };
-    verlauf.push(energie(1000) > energie(2000) ? 1000 : 2000);
-  }
-  return verlauf;
+    const verlauf = [];
+    const halb = Math.floor(sr / 2);
+    for (let start = 0; start + halb <= x.length; start += halb) {
+      const seg = x.subarray(start, start + halb);
+      let spitze = 0;
+      for (const v of seg) spitze = Math.max(spitze, Math.abs(v));
+      if (spitze < 0.02) verlauf.push('still');
+      else verlauf.push(energie(seg, 1000) > energie(seg, 2000) ? 1000 : 2000);
+    }
+    return verlauf;
+  }, mp3.toString('base64'));
 }
 
 const server = createServer((req, res) => {
@@ -137,9 +141,7 @@ try {
   assert.ok(frames.every((f) => f.sampleRate === 48000 && f.kanaele === 2 && f.bitrate === 192));
   assert.ok(dauer > 7 && dauer < 9.5, `Dauer ${dauer}`);
 
-  const kopie = join(profil, 'aufnahme.mp3');
-  writeFileSync(kopie, mp3);
-  const verlauf = frequenzVerlauf(kopie);
+  const verlauf = await frequenzVerlauf(seite, mp3);
   console.log('Verlauf (je 0,5 s):', verlauf.join(' '));
   const folge = verlauf.filter((v, i) => v !== verlauf[i - 1]); // Wiederholungen zusammenfassen
   assert.deepEqual(folge.filter((v) => v !== 'still'), [1000, 2000], 'Töne fehlen oder falsch');
