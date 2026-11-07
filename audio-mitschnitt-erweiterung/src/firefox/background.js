@@ -71,15 +71,22 @@ async function starten({ tabId: tab, bitrate, titel }) {
   quellenInfo.clear();
   aufnahme = new Aufnahme({ bitrate, titel, sampleRate: aufnahmeRate() });
   aufnahme.info = 'Suche Audio-/Videoelemente …';
+  // Erst starten, dann einfügen: Der Abgriff verbindet sich schon während
+  // executeScript und würde sonst als "keine Aufnahme aktiv" abgewiesen.
+  aufnahme.starten();
   const ergebnis = await abgriffEinfuegen();
   if (ergebnis !== true) {
+    aufnahme.stoppen();
+    for (const port of ports.values()) {
+      try { port.postMessage({ typ: 'stopp' }); port.disconnect(); } catch (_) { /* Frame weg */ }
+    }
+    ports.clear();
     aufnahme = null;
     tabId = null;
     throw new Error(/Missing host permission|about:|moz-extension|Cannot access/i.test(String(ergebnis))
       ? 'Diese Seite kann nicht aufgenommen werden (Browser-interne Seite).'
       : String(ergebnis.message || ergebnis));
   }
-  aufnahme.starten();
   abzeichen(true);
   return status();
 }
