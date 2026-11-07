@@ -13,6 +13,8 @@ let tabId = null;
 const ports = new Map(); // Quelle-ID -> Port
 const quellenInfo = new Map(); // Quelle-ID -> {erfasst, fremd, blockiert}
 const offeneDownloads = new Map();
+// Diagnose: was kommt von den Abgriffen an?
+const diag = { eingefuegt: '', abgewiesen: [], frames: new Map() }; // id -> {diag, pcm}
 
 function abzeichen(an) {
   browser.browserAction.setBadgeText({ text: an ? 'REC' : '' });
@@ -35,12 +37,14 @@ function aufnahmeRate() {
 async function abgriffEinfuegen() {
   try {
     for (const file of ['/lib/abgriff.js', '/firefox/tap.js']) {
-      await browser.tabs.executeScript(tabId, {
+      const ergebnisse = await browser.tabs.executeScript(tabId, {
         file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle',
       });
+      diag.eingefuegt = `${file.split('/').pop()} in ${ergebnisse.length} Frame(s)`;
     }
     return true;
   } catch (fehler) {
+    diag.eingefuegt = `Fehler: ${fehler && fehler.message ? fehler.message : fehler}`;
     return fehler;
   }
 }
@@ -69,6 +73,9 @@ async function starten({ tabId: tab, bitrate, titel }) {
   if (aufnahme && aufnahme.laeuft) throw new Error('Es läuft bereits eine Aufnahme.');
   tabId = tab;
   quellenInfo.clear();
+  diag.eingefuegt = '';
+  diag.abgewiesen = [];
+  diag.frames.clear();
   aufnahme = new Aufnahme({ bitrate, titel, sampleRate: aufnahmeRate() });
   aufnahme.info = 'Suche Audio-/Videoelemente …';
   // Erst starten, dann einfügen: Der Abgriff verbindet sich schon während
@@ -118,10 +125,28 @@ async function stoppen() {
   return ergebnis;
 }
 
+function diagnoseText() {
+  const zeilen = [
+    `Audio-Mitschnitt ${browser.runtime.getManifest().version} · Firefox · ${navigator.userAgent.match(/Firefox\/[\d.]+/)?.[0] || ''}`,
+    `Aufnahme: ${aufnahme ? `${aufnahme.laeuft ? 'läuft' : 'beendet'}, ${aufnahme.sampleRate} Hz, ${aufnahme.mischer.sekunden.toFixed(1)} s` : 'keine'} · Tab ${tabId}`,
+    `Eingefügt: ${diag.eingefuegt || '–'} · verbundene Frames: ${ports.size}`,
+  ];
+  if (diag.abgewiesen.length) zeilen.push(`Abgewiesen: ${diag.abgewiesen.join('; ')}`);
+  for (const [id, f] of diag.frames) {
+    const d = f.diag || {};
+    zeilen.push(`Frame ${id.split(':')[0]}${d.oben ? ' (oben)' : ''} ${d.seite || ''}: ` +
+      `Kontext ${d.ctx || '?'}, Abgriff ${d.abgriff ? 'ja' : 'nein'} (${d.abgriffFunktion || '?'}), ` +
+      `Blöcke gesendet ${d.gesendet ?? '?'} / empfangen ${f.pcm}`);
+    for (const e of d.elemente || []) zeilen.push(`  · ${e}`);
+    for (const e of d.fehler || []) zeilen.push(`  ! ${e}`);
+  }
+  return zeilen.join('\n');
+}
+
 function status() {
-  if (!aufnahme) return { laeuft: false };
+  if (!aufnahme) return { laeuft: false, diagnose: diagnoseText() };
   if (aufnahme.laeuft) aufnahme.info = infoText();
-  return { ...aufnahme.status(), tabId };
+  return { ...aufnahme.status(), tabId, diagnose: diagnoseText() };
 }
 
 browser.downloads.onChanged.addListener((delta) => {
@@ -137,16 +162,24 @@ browser.runtime.onConnect.addListener((port) => {
   if (port.name !== 'audio-mitschnitt-abgriff') return;
   const absenderTab = port.sender && port.sender.tab ? port.sender.tab.id : null;
   if (!aufnahme || !aufnahme.laeuft || absenderTab !== tabId) {
+    diag.abgewiesen.push(`Frame ${port.sender && port.sender.frameId} (Tab ${absenderTab}, ` +
+      `${!aufnahme ? 'keine Aufnahme' : !aufnahme.laeuft ? 'Aufnahme läuft nicht' : `erwartet Tab ${tabId}`})`);
+    if (diag.abgewiesen.length > 5) diag.abgewiesen.shift();
     port.postMessage({ typ: 'stopp' });
     port.disconnect();
     return;
   }
   const id = `${port.sender.frameId}:${Math.random().toString(36).slice(2)}`;
   ports.set(id, port);
+  const frameDiag = { diag: null, pcm: 0 };
+  diag.frames.set(id, frameDiag);
   port.onMessage.addListener((m) => {
     if (!aufnahme || !aufnahme.laeuft) return;
-    if (m.typ === 'pcm') aufnahme.hinzufuegen(id, m.l, m.r, m.rate);
-    else if (m.typ === 'info') quellenInfo.set(id, m);
+    if (m.typ === 'pcm') {
+      frameDiag.pcm++;
+      aufnahme.hinzufuegen(id, m.l, m.r, m.rate);
+    } else if (m.typ === 'info') quellenInfo.set(id, m);
+    else if (m.typ === 'diag') frameDiag.diag = m;
   });
   port.onDisconnect.addListener(() => {
     ports.delete(id);

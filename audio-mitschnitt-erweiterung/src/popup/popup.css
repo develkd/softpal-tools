@@ -36,5 +36,8 @@ summary { cursor: pointer; color: var(--grau); }
 label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 label.haken { justify-content: flex-start; }
 select { font: inherit; padding: 3px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--rand); border-radius: 6px; }
+#diagnose pre { white-space: pre-wrap; word-break: break-word; font-size: 10.5px; line-height: 1.35;
+  background: var(--hell); padding: 6px 8px; border-radius: 6px; max-height: 220px; overflow: auto; margin: 6px 0; }
+#diagnose button { font-size: 12px; padding: 5px 10px; }
 .klein { color: var(--grau); font-size: 11px; margin: 6px 0 0; }
 footer { margin-top: 10px; color: var(--grau); font-size: 11px; }

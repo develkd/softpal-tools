@@ -14,7 +14,7 @@ const ereignisse = () => {
 };
 
 const api = {
-  runtime: { onConnect: ereignisse(), onMessage: ereignisse() },
+  runtime: { onConnect: ereignisse(), onMessage: ereignisse(), getManifest: () => ({ version: 'test' }) },
   tabs: { onUpdated: ereignisse(), onRemoved: ereignisse(), executeScript: null },
   browserAction: { setBadgeText() {}, setBadgeBackgroundColor() {} },
   storage: { local: { get: async () => ({}) } },
@@ -47,7 +47,7 @@ const abgriffe = [];
 api.tabs.executeScript = async (tabId, { file }) => {
   assert.equal(tabId, TAB);
   if (file === '/firefox/tap.js') abgriffe.push(abgriffVerbinden(0));
-  return [];
+  return [undefined];
 };
 const downloads = [];
 api.downloads.download = async (opt) => { downloads.push(opt); return downloads.length; };
@@ -74,6 +74,8 @@ test('Abgriff, der sich beim Einfügen verbindet, wird angenommen und aufgenomme
 
   // 1,5 s Ton in 44,1 kHz (Standardrate des "Systems"), Aufnahme läuft mit 44,1 kHz
   abgriff.senden({ typ: 'info', erfasst: 1, fremd: 0, blockiert: 0, fehler: 0 });
+  abgriff.senden({ typ: 'diag', seite: 'www.youtube.com/watch', oben: true, abgriffFunktion: 'function',
+    ctx: 'running 44100 Hz', abgriff: true, elemente: ['video eigen erfasst spielt'], gesendet: 15, fehler: [] });
   let phase = 0;
   for (let i = 0; i < 15; i++) {
     const ton = sinus(4410, { frequenz: 1000, sampleRate: 44100, phase });
@@ -85,6 +87,9 @@ test('Abgriff, der sich beim Einfügen verbindet, wird angenommen und aufgenomme
   assert.equal(status.laeuft, true);
   assert.match(status.info, /1 Medienquelle/);
   assert.ok(status.pegelDb > -8, `Pegel ${status.pegelDb}`);
+  assert.match(status.diagnose, /Eingefügt: tap\.js in 1 Frame\(s\) · verbundene Frames: 1/);
+  assert.match(status.diagnose, /Frame 0 \(oben\) www\.youtube\.com\/watch: Kontext running 44100 Hz, Abgriff ja \(function\), Blöcke gesendet 15 \/ empfangen 15/);
+  assert.match(status.diagnose, /· video eigen erfasst spielt/);
 
   const ende = await nachricht({ typ: 'stoppen' });
   assert.equal(ende.laeuft, false);

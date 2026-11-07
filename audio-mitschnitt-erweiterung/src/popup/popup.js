@@ -58,6 +58,10 @@ function anzeigen(st) {
   $('pause').textContent = st.pausiert ? '▶ Weiter' : '❚❚ Pause';
   $('bitrate').disabled = laeuft;
   if (laeuft && st.info && !$('hinweis').classList.contains('fehler')) hinweis(st.info);
+  if (st.diagnose) {
+    $('diagnose').hidden = false;
+    $('diagnose-text').textContent = st.diagnose;
+  }
 }
 
 async function aktualisieren() {
@@ -117,6 +121,17 @@ async function init() {
   }
   $('start').addEventListener('click', startStopp);
   $('pause').addEventListener('click', pauseUmschalten);
+  $('diagnose-kopieren').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('diagnose-text').textContent);
+      $('diagnose-kopieren').textContent = 'Kopiert ✓';
+    } catch (_) {
+      // Fallback: Text markieren, damit er mit Strg+C kopiert werden kann
+      const auswahl = window.getSelection();
+      auswahl.selectAllChildren($('diagnose-text'));
+      $('diagnose-kopieren').textContent = 'Markiert – mit Strg+C kopieren';
+    }
+  });
   await einstellungenLaden();
   await aktualisieren();
   setInterval(aktualisieren, 250);

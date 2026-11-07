@@ -48,7 +48,36 @@
     zaehler: { erfasst: 0, fremd: 0, blockiert: 0, fehler: 0 },
     fehlertext: '',
     beobachter: null,
+    // Diagnose (Popup -> "Diagnose"): was passiert wirklich in dieser Seite?
+    diag: { gesendet: 0, fehler: [] },
+    diagTimer: null,
   };
+
+  function protokoll(fehler) {
+    const text = `${fehler && fehler.name ? `${fehler.name}: ` : ''}${fehler && fehler.message ? fehler.message : fehler}`;
+    zustand.diag.fehler.push(text);
+    if (zustand.diag.fehler.length > 5) zustand.diag.fehler.shift();
+  }
+
+  function diagnose() {
+    const elemente = Array.from(document.querySelectorAll('audio, video')).map((el) => {
+      let art = '?';
+      try { art = herkunft(el); } catch (e) { art = `Fehler ${e}`; }
+      return `${el.tagName.toLowerCase()} ${art} ${zustand.behandelt.get(el) || 'unbehandelt'}` +
+        `${el.paused ? ' pausiert' : ' spielt'}${el.muted ? ' stumm' : ''}`;
+    });
+    return {
+      typ: 'diag',
+      seite: location.host + location.pathname.slice(0, 30),
+      oben: window.top === window,
+      abgriffFunktion: typeof erstelleAbgriff,
+      ctx: zustand.ctx ? `${zustand.ctx.state} ${zustand.ctx.sampleRate} Hz` : 'keiner',
+      abgriff: Boolean(zustand.abgriff),
+      elemente,
+      gesendet: zustand.diag.gesendet,
+      fehler: zustand.diag.fehler.slice(),
+    };
+  }
 
   function senden(nachricht) {
     if (!zustand.port) return;
@@ -69,7 +98,13 @@
     if (!zustand.abgriff && zustand.port) {
       const rate = zustand.ctx.sampleRate;
       zustand.abgriff = erstelleAbgriff(zustand.ctx, (l, r) => {
-        if (zustand.zaehler.erfasst > 0) senden({ typ: 'pcm', l, r, rate });
+        if (zustand.zaehler.erfasst <= 0) return;
+        try {
+          senden({ typ: 'pcm', l, r, rate });
+          zustand.diag.gesendet++;
+        } catch (fehler) {
+          protokoll(fehler);
+        }
       });
     }
     return zustand.ctx.state === 'running' ? zustand.ctx : null;
@@ -97,6 +132,7 @@
     } catch (fehler) {
       // Fehler sichtbar machen (Popup), statt ihn zu verschlucken
       zustand.fehlertext = `${fehler && fehler.name ? `${fehler.name}: ` : ''}${fehler && fehler.message ? fehler.message : fehler}`;
+      protokoll(fehler);
       zaehlen(el, 'fehler');
     } finally {
       zustand.inArbeit.delete(el);
@@ -124,11 +160,16 @@
   }
 
   function alleSuchen() {
-    document.querySelectorAll('audio, video').forEach((el) => { erfassen(el); });
+    try {
+      document.querySelectorAll('audio, video').forEach((el) => { erfassen(el).catch(protokoll); });
+    } catch (fehler) {
+      protokoll(fehler);
+    }
   }
 
   function beiMedienEreignis(e) {
-    if (e.target instanceof HTMLMediaElement) erfassen(e.target);
+    const el = e.target;
+    if (el && (el.tagName === 'VIDEO' || el.tagName === 'AUDIO')) erfassen(el).catch(protokoll);
   }
 
   function verbinden() {
@@ -147,9 +188,14 @@
     zustand.beobachter.observe(document.documentElement, { childList: true, subtree: true });
     alleSuchen();
     info();
+    zustand.diagTimer = setInterval(() => {
+      try { senden(diagnose()); } catch (fehler) { protokoll(fehler); }
+    }, 1000);
   }
 
   function trennen() {
+    if (zustand.diagTimer) clearInterval(zustand.diagTimer);
+    zustand.diagTimer = null;
     if (zustand.abgriff) {
       for (const knoten of zustand.angeschlossen) {
         try { knoten.disconnect(zustand.abgriff.eingang); } catch (_) { /* schon getrennt */ }

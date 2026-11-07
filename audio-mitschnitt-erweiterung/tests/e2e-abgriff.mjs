@@ -41,6 +41,7 @@ const SEITE = (fremdUrl) => `<!doctype html><meta charset="utf-8"><title>Abgriff
     postMessage(m) {
       if (m.typ === 'pcm') { window.pcmRate = m.rate; aufnahme.hinzufuegen('seite', m.l, m.r, m.rate); }
       if (m.typ === 'info') infos.push(m);
+      if (m.typ === 'diag') window.letzteDiag = m;
     },
     disconnect() {},
     onMessage: { addListener() {} },
@@ -122,6 +123,7 @@ try {
       vorher: abschnitt(0.6, 1.6), // nur 1000 Hz erwartet
       nachher: abschnitt(3.0, 3.6), // 1000 + 3000 Hz erwartet
       info: infos.at(-1),
+      diag: window.letzteDiag,
       raten: { seite: window.pcmRate, aufnahme: aufnahme.sampleRate },
       fremdNochHoerbar: !document.getElementById('fremd').paused,
     };
@@ -136,6 +138,14 @@ try {
   assert.ok(nachher.f1000 > 100 * nachher.f2000);
   assert.deepEqual({ erfasst: info.erfasst, fremd: info.fremd, fehler: info.fehler }, { erfasst: 2, fremd: 1, fehler: 0 });
   assert.ok(ergebnis.fremdNochHoerbar);
+  const d = ergebnis.diag;
+  assert.ok(d, 'keine Diagnose empfangen');
+  assert.equal(d.abgriffFunktion, 'function');
+  assert.match(d.ctx, /^running \d+ Hz$/);
+  assert.ok(d.gesendet > 10, `gesendet ${d.gesendet}`);
+  assert.deepEqual(d.fehler, []);
+  assert.deepEqual(d.elemente.map((e) => e.split(' ').slice(0, 3).join(' ')).sort(),
+    ['audio eigen erfasst', 'audio eigen erfasst', 'audio fremd fremd']);
   console.log('Abgriff OK');
 } finally {
   await browser.close();
