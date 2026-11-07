@@ -51,7 +51,7 @@ Hinweis: Als Stille gilt ein Pegel unter −60 dBFS.
 | Was wird aufgenommen | **alles**, was der Tab ausgibt: Videos, Musik, Web Audio, WebRTC-Anrufe | `<audio>`/`<video>`-Elemente (YouTube, Mediatheken, Podcasts …) und WebRTC-Streams an Media-Elementen |
 | Nicht erfasst | – | reine Web-Audio-Ausgaben (z. B. Spiele, manche Synthesizer); Medien von **fremden Domains ohne CORS** (sie spielen normal weiter, fehlen aber in der Aufnahme; das Popup zeigt die Anzahl an) |
 | Seitenwechsel im Tab | Aufnahme läuft weiter | Aufnahme läuft weiter, Abgriff wird automatisch neu eingefügt |
-| Getestet | automatisiert in Chromium, auch die Automatik (siehe unten) | von Hand in Firefox: Aufnahme auf YouTube (ab 1.0.3), Automatik (1.2.0); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
+| Getestet | automatisiert in Chromium, auch die Automatik (siehe unten) | von Hand in Firefox: Aufnahme auf YouTube (ab 1.0.3), Automatik (1.2.0), Dateinamen aus dem Tabtitel (1.3.0); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
 
 **Diagnose (Firefox):** Klappt etwas nicht, im Popup unten „Diagnose“ aufklappen und „Diagnose kopieren“. Dort steht, in wie viele Frames der Abgriff eingefügt wurde, welche Audio-/Videoelemente er gefunden hat, wie viele Tonblöcke ankommen und welche Fehler auftraten.
 
