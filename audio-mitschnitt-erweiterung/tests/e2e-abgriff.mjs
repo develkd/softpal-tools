@@ -37,7 +37,7 @@ const SEITE = (fremdUrl) => `<!doctype html><meta charset="utf-8"><title>Abgriff
   const seitenRate = new AudioContext().sampleRate;
   window.aufnahme = new Aufnahme({ bitrate: 128, sampleRate: seitenRate === 48000 ? 44100 : 48000 });
   window.infos = [];
-  window.browser = { runtime: { connect: () => ({
+  window.browser = { runtime: { getURL: (pfad) => '/' + pfad, connect: () => ({
     postMessage(m) {
       if (m.typ === 'pcm') { window.pcmRate = m.rate; aufnahme.hinzufuegen('seite', m.l, m.r, m.rate); }
       if (m.typ === 'info') infos.push(m);
@@ -58,6 +58,7 @@ const dateien = {
   '/lib/resampler.js': readFileSync(new URL('lib/resampler.js', src)),
   '/lib/aufnahme.js': readFileSync(new URL('lib/aufnahme.js', src)),
   '/lib/abgriff.js': readFileSync(new URL('lib/abgriff.js', src)),
+  '/lib/abgriff-worklet.js': readFileSync(new URL('lib/abgriff-worklet.js', src)),
   '/firefox/tap.js': readFileSync(new URL('firefox/tap.js', src)),
   '/ton1000.wav': wav(1000, 2),
   '/ton2000.wav': wav(2000, 2),
@@ -141,6 +142,7 @@ try {
   const d = ergebnis.diag;
   assert.ok(d, 'keine Diagnose empfangen');
   assert.equal(d.abgriffFunktion, 'function');
+  assert.equal(d.abgriff, 'AudioWorklet', 'Firefox-Abgriff nutzt nicht das AudioWorklet');
   assert.match(d.ctx, /^running \d+ Hz$/);
   assert.ok(d.gesendet > 10, `gesendet ${d.gesendet}`);
   assert.deepEqual(d.fehler, []);

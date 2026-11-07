@@ -34,7 +34,7 @@ Im Popup **„Automatisch aufnehmen“** anhaken. Danach braucht es keinen Klick
 - Ausschalten der Automatik oder „Beenden“ speichert ein laufendes Stück, wenn es lang genug ist.
 - Von Hand gestartete Aufnahmen laufen wie gewohnt weiter, bis man sie beendet.
 
-Hinweis: Als Stille gilt ein Pegel unter −60 dBFS. Das Ende wird etwa 0,3 s nach Ablauf der eingestellten Zeit erkannt (Puffer gegen Aussetzer).
+Hinweis: Als Stille gilt ein Pegel unter −60 dBFS.
 
 | | Chrome / Edge | Firefox |
 |---|---|---|
@@ -86,9 +86,10 @@ audio-mitschnitt-erweiterung/
 ├── build.mjs                baut dist/chrome, dist/firefox und ZIPs
 ├── src/
 │   ├── lib/
-│   │   ├── mischer.js       Quellen mischen, Takt nach echter Zeit, Stille/Drift
+│   │   ├── mischer.js       Quellen mischen; datengetrieben, Stille nur bei Lücken
 │   │   ├── aufnahme.js      Mischer + MP3-Kodierung, Pause, Status
-│   │   ├── abgriff.js       PCM aus einem AudioContext abgreifen
+│   │   ├── abgriff.js       Abgriff: Tonspur direkt (Chrome), AudioWorklet, ScriptProcessor (Rückfall)
+│   │   ├── abgriff-worklet.js  AudioWorklet-Prozessor (verlustfrei im Audio-Thread)
 │   │   ├── lame.min.js      lamejs 1.2.1 (MP3-Encoder, LGPL-3.0)
 │   │   └── lizenzen/        Lizenztexte Drittanbieter
 │   ├── popup/               Oberfläche (für beide Browser gleich)
@@ -100,6 +101,7 @@ audio-mitschnitt-erweiterung/
     │                        Firefox-Hintergrundseite mit nachgebildeter API
     ├── e2e-chrome.mjs       echter Chromium: Erweiterung laden, Töne aufnehmen, MP3 analysieren
     ├── e2e-chrome-automatik.mjs  echter Chromium: Automatik startet bei Ton, endet nach Stille
+    ├── e2e-chrome-knistern.mjs   echter Chromium: 12 s Dauer-Sinus, prüft auf Aussetzer (Knistern)
     └── e2e-abgriff.mjs      Firefox-Abgriff in Chromium mit nachgebildeter Erweiterungs-API
 ```
 

@@ -1,13 +1,15 @@
 /*
  * Mischer: sammelt PCM-Blöcke aus einer oder mehreren Quellen und gibt sie
- * im Takt der echten Uhrzeit als ein Stereo-Signal aus.
+ * als ein Stereo-Signal aus.
  *
- * - Fehlen Daten (Quelle stumm, Seite lädt neu, Element pausiert), wird
- *   Stille eingefügt. Die Aufnahme bleibt synchron zur realen Zeit.
+ * - Liefern Quellen Daten, wird genau das ausgegeben, was ankommt
+ *   (datengetrieben, ohne Uhr). Verspätete Blöcke – etwa wenn der Rechner
+ *   kurz ausgelastet ist – erzeugen so keine Lücken (früher: Knistern).
+ * - Liefert keine Quelle mehr Daten (länger als `luecke`, z. B. Element
+ *   pausiert, Seite lädt neu), wird nach der Uhr Stille eingefügt. Die
+ *   Aufnahme bleibt so synchron zur realen Zeit.
  * - Mehrere Quellen (z. B. mehrere <video>-Elemente/Frames in Firefox)
- *   werden addiert.
- * - Ein kleiner Latenzpuffer verhindert, dass leicht verspätete Blöcke als
- *   Stille gewertet werden; driftet eine Quelle davon, wird gekürzt.
+ *   werden addiert; ausgegeben wird, was alle aktiven Quellen geliefert haben.
  *
  * Läuft als klassisches Skript (setzt globalThis.Mischer) und unter Node.
  */
@@ -81,14 +83,14 @@
     /**
      * @param {object} o
      * @param {number} [o.sampleRate=48000]
-     * @param {number} [o.latenz=0.3]     Sekunden Vorlauf für verspätete Blöcke
-     * @param {number} [o.maxPuffer=1.0]  ab so viel Rückstand wird gekürzt
+     * @param {number} [o.latenz=0.3]     Sekunden Vorlauf beim Auffüllen mit Stille
+     * @param {number} [o.luecke=0.5]     so lange ohne Daten gilt eine Quelle als stumm
      * @param {() => number} [o.jetzt]    Uhr in Sekunden (für Tests austauschbar)
      */
     constructor(o = {}) {
       this.sampleRate = o.sampleRate || 48000;
       this.latenz = o.latenz ?? 0.3;
-      this.maxPuffer = o.maxPuffer ?? 1.0;
+      this.luecke = o.luecke ?? 0.5;
       this.jetzt = o.jetzt || (() => performance.now() / 1000);
       this.quellen = new Map();
       this.sollFrames = 0;
@@ -109,6 +111,12 @@
         this.quellen.set(id, fifo);
       }
       fifo.anhaengen(links, rechts);
+      fifo.letzteDaten = this.jetzt();
+    }
+
+    /** Quellen, die zuletzt innerhalb von `luecke` Sekunden Daten geliefert haben. */
+    _aktive(t) {
+      return [...this.quellen.values()].filter((f) => f.letzteDaten != null && t - f.letzteDaten < this.luecke);
     }
 
     entfernen(id) {
@@ -142,21 +150,26 @@
         for (const fifo of this.quellen.values()) fifo.leeren();
         return { links: new Float32Array(0), rechts: new Float32Array(0) };
       }
-      const faellig = abrunden(this.sollFrames - this.latenz * this.sampleRate - this.geschrieben);
-      const block = this._mischen(Math.max(0, faellig));
-      // Drift: läuft eine Quelle schneller als die Uhr, nicht endlos puffern
-      const grenze = this.maxPuffer * this.sampleRate;
-      for (const fifo of this.quellen.values()) {
-        if (fifo.laenge > grenze) fifo.verwerfen(fifo.laenge - Math.floor(this.latenz * this.sampleRate));
+      const aktiv = this._aktive(this.letzte);
+      if (aktiv.length) {
+        // datengetrieben: ausgeben, was alle aktiven Quellen geliefert haben
+        const block = this._mischen(Math.min(...aktiv.map((f) => f.laenge)));
+        // Uhr an die Daten koppeln, damit spätere Stille richtig bemessen wird
+        this.sollFrames = this.geschrieben + this.latenz * this.sampleRate;
+        return block;
       }
-      return block;
+      // keine Quelle liefert: Stille nach der Uhr (Reste stummer Quellen zuerst)
+      const faellig = abrunden(this.sollFrames - this.latenz * this.sampleRate - this.geschrieben);
+      return this._mischen(Math.max(0, faellig));
     }
 
-    /** Beim Stoppen: alles bis jetzt ausgeben (inkl. Latenzpuffer). */
+    /** Beim Stoppen: alles Gelieferte ausgeben; ohne aktive Quelle bis jetzt auffüllen. */
     abschliessen(pausiert = false) {
       this._uhr(pausiert);
+      const rest = Math.max(0, ...[...this.quellen.values()].map((f) => f.laenge));
+      if (this._aktive(this.letzte).length) return this._mischen(rest);
       const faellig = abrunden(this.sollFrames - this.geschrieben);
-      return this._mischen(Math.max(0, faellig));
+      return this._mischen(Math.max(rest, faellig, 0));
     }
 
     get sekunden() {

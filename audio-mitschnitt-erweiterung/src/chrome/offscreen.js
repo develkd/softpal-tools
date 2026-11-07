@@ -69,8 +69,14 @@ async function starten({ streamId, bitrate, titel, tabId: tab, automatik = null 
   if (automatik) autoEinst = { ...autoEinst, ...automatik };
   aufnahme = neueAufnahme({ bitrate, titel, automatisch: Boolean(automatik) });
   // Rückruf liest "aufnahme" bei jedem Block neu -> nach dem Teilen geht es in die neue Datei
-  abgriff = erstelleAbgriff(ctx, (l, r) => aufnahme.mischer.hinzufuegen('tab', l, r));
-  quelle.connect(abgriff.eingang);
+  // bevorzugt direkt an der Tonspur (ohne zweite Uhr), sonst per AudioWorklet
+  abgriff = erstelleSpurAbgriff(stream.getAudioTracks()[0],
+    (l, r, rate) => aufnahme.hinzufuegen('tab', l, r, rate));
+  if (!abgriff) {
+    abgriff = await erstelleAbgriffWorklet(ctx, (l, r) => aufnahme.hinzufuegen('tab', l, r),
+      chrome.runtime.getURL('lib/abgriff-worklet.js'));
+    quelle.connect(abgriff.eingang);
+  }
   aufnahme.starten();
 
   // Tab geschlossen o. Ä. -> automatisch beenden und speichern
@@ -112,7 +118,7 @@ async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
 
 function status() {
   const s = aufnahme ? aufnahme.status() : { laeuft: false };
-  return { ...s, tabId, offeneDateien: offeneUrls.size };
+  return { ...s, tabId, offeneDateien: offeneUrls.size, abgriffArt: abgriff ? abgriff.art : null };
 }
 
 chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {

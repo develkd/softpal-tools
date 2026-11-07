@@ -217,9 +217,9 @@ test('Einstellung "nachStille" wird auf mindestens 0,5 s begrenzt', async () => 
   const vorherDownloads = downloads.length;
   await einstellen({ mindestTon: 0 });
   await tonLiefern(abgriff, 1);
-  await tonLiefern(abgriff, 0.5, false); // 0,5 s: wegen Grenze 0,5 s + Latenz noch nicht fertig
+  await tonLiefern(abgriff, 0.4, false); // 0,4 s Stille: bei Grenze 0,5 s noch nicht fertig
   assert.equal(downloads.length, vorherDownloads, 'Grenze 0,5 s nicht beachtet');
-  await tonLiefern(abgriff, 0.6, false);
+  await tonLiefern(abgriff, 0.2, false);
   assert.equal(downloads.length, vorherDownloads + 1);
   await einstellen({ automatik: false });
 });

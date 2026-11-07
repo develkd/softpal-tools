@@ -23,7 +23,10 @@
     return;
   }
 
-  const erstelleAbgriff = globalThis.erstelleAbgriff; // aus lib/abgriff.js (vorher eingefügt)
+  // aus lib/abgriff.js (vorher eingefügt): bevorzugt AudioWorklet (kein Datenverlust,
+  // wenn die Seite den Hauptthread auslastet), sonst ScriptProcessor
+  const erstelleAbgriff = globalThis.erstelleAbgriff;
+  const erstelleAbgriffWorklet = globalThis.erstelleAbgriffWorklet;
 
   function herkunft(el) {
     if (el.srcObject) return 'stream';
@@ -72,7 +75,7 @@
       oben: window.top === window,
       abgriffFunktion: typeof erstelleAbgriff,
       ctx: zustand.ctx ? `${zustand.ctx.state} ${zustand.ctx.sampleRate} Hz` : 'keiner',
-      abgriff: Boolean(zustand.abgriff),
+      abgriff: zustand.abgriff ? zustand.abgriff.art || 'ja' : false,
       elemente,
       gesendet: zustand.diag.gesendet,
       fehler: zustand.diag.fehler.slice(),
@@ -96,16 +99,25 @@
       await Promise.race([zustand.ctx.resume(), new Promise((r) => setTimeout(r, 500))]);
     }
     if (!zustand.abgriff && zustand.port) {
-      const rate = zustand.ctx.sampleRate;
-      zustand.abgriff = erstelleAbgriff(zustand.ctx, (l, r) => {
-        if (zustand.zaehler.erfasst <= 0) return;
-        try {
-          senden({ typ: 'pcm', l, r, rate });
-          zustand.diag.gesendet++;
-        } catch (fehler) {
-          protokoll(fehler);
-        }
-      });
+      if (!zustand.abgriffWird) {
+        const rate = zustand.ctx.sampleRate;
+        const beiDaten = (l, r) => {
+          if (zustand.zaehler.erfasst <= 0 || !zustand.port) return;
+          try {
+            senden({ typ: 'pcm', l, r, rate });
+            zustand.diag.gesendet++;
+          } catch (fehler) {
+            protokoll(fehler);
+          }
+        };
+        zustand.abgriffWird = (erstelleAbgriffWorklet
+          ? erstelleAbgriffWorklet(zustand.ctx, beiDaten, browser.runtime.getURL('lib/abgriff-worklet.js'))
+          : Promise.resolve(erstelleAbgriff(zustand.ctx, beiDaten)))
+          .finally(() => { zustand.abgriffWird = null; });
+      }
+      const neu = await zustand.abgriffWird;
+      if (!zustand.abgriff) zustand.abgriff = neu;
+      else if (neu !== zustand.abgriff) neu.trennen();
     }
     return zustand.ctx.state === 'running' ? zustand.ctx : null;
   }

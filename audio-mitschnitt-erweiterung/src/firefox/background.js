@@ -165,7 +165,7 @@ function diagnoseText() {
   for (const [id, f] of diag.frames) {
     const d = f.diag || {};
     zeilen.push(`Frame ${id.split(':')[0]}${d.oben ? ' (oben)' : ''} ${d.seite || ''}: ` +
-      `Kontext ${d.ctx || '?'}, Abgriff ${d.abgriff ? 'ja' : 'nein'} (${d.abgriffFunktion || '?'}), ` +
+      `Kontext ${d.ctx || '?'}, Abgriff ${d.abgriff ? (d.abgriff === true ? 'ja' : d.abgriff) : 'nein'} (${d.abgriffFunktion || '?'}), ` +
       `Blöcke gesendet ${d.gesendet ?? '?'} / empfangen ${f.pcm}`);
     for (const e of d.elemente || []) zeilen.push(`  · ${e}`);
     for (const e of d.fehler || []) zeilen.push(`  ! ${e}`);
