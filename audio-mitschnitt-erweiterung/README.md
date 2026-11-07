@@ -30,7 +30,9 @@ Weitere Funktionen:
 | Was wird aufgenommen | **alles**, was der Tab ausgibt: Videos, Musik, Web Audio, WebRTC-Anrufe | `<audio>`/`<video>`-Elemente (YouTube, Mediatheken, Podcasts …) und WebRTC-Streams an Media-Elementen |
 | Nicht erfasst | – | reine Web-Audio-Ausgaben (z. B. Spiele, manche Synthesizer); Medien von **fremden Domains ohne CORS** (sie spielen normal weiter, fehlen aber in der Aufnahme; das Popup zeigt die Anzahl an) |
 | Seitenwechsel im Tab | Aufnahme läuft weiter | Aufnahme läuft weiter, Abgriff wird automatisch neu eingefügt |
-| Getestet | automatisiert in Chromium (siehe unten) | Logik in Chromium simuliert, `web-ext lint` ohne Fehler; **in echtem Firefox noch nicht getestet** |
+| Getestet | automatisiert in Chromium (siehe unten) | von Hand in Firefox auf YouTube (ab Version 1.0.3); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
+
+**Diagnose (Firefox):** Klappt etwas nicht, im Popup unten „Diagnose“ aufklappen und „Diagnose kopieren“. Dort steht, in wie viele Frames der Abgriff eingefügt wurde, welche Audio-/Videoelemente er gefunden hat, wie viele Tonblöcke ankommen und welche Fehler auftraten.
 
 Firefox-Besonderheit: Erlaubt die Seite noch keine Tonwiedergabe (Autoplay-Sperre), wartet der Abgriff auf einen Klick in die Seite. Er fasst die Elemente vorher nicht an, damit nichts verstummt.
 
