@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Audio-Mitschnitt</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header>
+  <img src="../icons/icon-32.png" alt="" width="20" height="20">
+  <h1>Audio-Mitschnitt</h1>
+  <span class="version" id="version"></span>
+</header>
+
+<section class="quelle">
+  <div class="beschriftung" id="quelle-beschriftung">Ton dieses Tabs</div>
+  <div class="titel" id="tab-titel">…</div>
+</section>
+
+<section class="anzeige">
+  <span class="punkt" id="punkt" aria-hidden="true"></span>
+  <span class="zeit" id="zeit">00:00:00</span>
+  <span class="groesse" id="groesse"></span>
+</section>
+<div class="pegel" role="meter" aria-label="Pegel" aria-valuemin="0" aria-valuemax="100"><div id="pegel-balken"></div></div>
+
+<section class="knoepfe">
+  <button id="start" class="haupt">● Aufnahme starten</button>
+  <button id="pause" disabled>❚❚ Pause</button>
+</section>
+
+<label class="automatik" for="automatik">
+  <input type="checkbox" id="automatik">
+  <span><strong>Automatisch aufnehmen</strong><br><span class="klein" id="automatik-text">startet bei Ton, neue Datei nach jeder Stille</span></span>
+</label>
+
+<p class="hinweis" id="hinweis" role="status"></p>
+
+<details id="einstellungen">
+  <summary>Einstellungen</summary>
+  <label>Qualität
+    <select id="bitrate">
+      <option value="96">96 kbit/s</option>
+      <option value="128">128 kbit/s</option>
+      <option value="160">160 kbit/s</option>
+      <option value="192" selected>192 kbit/s</option>
+      <option value="256">256 kbit/s</option>
+      <option value="320">320 kbit/s</option>
+    </select>
+  </label>
+  <label>Automatik: neue Datei nach Stille von
+    <span class="zahl"><input type="number" id="nach-stille" min="0.5" max="600" step="0.5" value="5" inputmode="decimal"> s</span>
+  </label>
+  <label>Automatik: Aufnahmen verwerfen, kürzer als
+    <span class="zahl"><input type="number" id="mindest-ton" min="0" max="600" step="0.5" value="3" inputmode="decimal"> s</span>
+  </label>
+  <p class="klein" id="zahl-hinweis">Stille ab 0,5 s · 0 = nichts verwerfen</p>
+  <label class="haken"><input type="checkbox" id="fragen"> Speicherort jedes Mal fragen</label>
+  <p class="klein">Sonst landen die Dateien unter <code>Downloads/Mitschnitte/</code>.</p>
+</details>
+
+<details id="diagnose" hidden>
+  <summary>Diagnose</summary>
+  <pre id="diagnose-text"></pre>
+  <button id="diagnose-kopieren" type="button">Diagnose kopieren</button>
+</details>
+
+<footer id="fusszeile">Nimmt nur auf, was dieser Tab abspielt, nicht andere Programme.</footer>
+<script src="popup.js"></script>
+</body>
+</html>

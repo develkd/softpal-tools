@@ -1,0 +1,53 @@
+:root {
+  --bg: #ffffff; --fg: #111111; --grau: #5f5f5f; --hell: #ededed; --rand: #d6d6d6;
+  --rot: #c62828; --gruen: #2e7d32; --knopf: #111111; --knopf-text: #ffffff;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1c1c; --fg: #f2f2f2; --grau: #a8a8a8; --hell: #2e2e2e; --rand: #3a3a3a;
+          --knopf: #f2f2f2; --knopf-text: #111111; --gruen: #66bb6a; --rot: #ef5350; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; width: 340px; padding: 14px 16px 12px; background: var(--bg); color: var(--fg);
+       font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; }
+header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+h1 { font-size: 15px; margin: 0; font-weight: 650; }
+.version { margin-left: auto; color: var(--grau); font-size: 11px; font-variant-numeric: tabular-nums; }
+.quelle .beschriftung { color: var(--grau); font-size: 12px; }
+.quelle .titel { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anzeige { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.punkt { width: 14px; height: 14px; border-radius: 50%; background: var(--rand); flex: none; }
+.punkt.an { background: var(--rot); }
+.punkt.pause { background: var(--rot); animation: blinken 1s steps(2) infinite; }
+@keyframes blinken { 50% { opacity: .15; } }
+.zeit { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+.groesse { margin-left: auto; color: var(--grau); font-variant-numeric: tabular-nums; }
+.pegel { height: 6px; background: var(--hell); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+#pegel-balken { height: 100%; width: 0; background: var(--gruen); transition: width 80ms linear; }
+.knoepfe { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+button { font: inherit; font-weight: 600; padding: 9px 12px; border-radius: 8px; cursor: pointer;
+         border: 1px solid var(--rand); background: var(--bg); color: var(--fg); }
+button.haupt { background: var(--knopf); color: var(--knopf-text); border-color: var(--knopf); }
+button.haupt.stopp { background: var(--rot); border-color: var(--rot); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+label.automatik { display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px;
+  margin-top: 10px; padding: 8px 10px; border: 1px solid var(--rand); border-radius: 8px; cursor: pointer; }
+label.automatik input { margin-top: 3px; }
+label.automatik .klein { margin: 0; }
+.hinweis { min-height: 18px; margin: 10px 0 4px; color: var(--grau); font-size: 12px; }
+.hinweis.fehler { color: var(--rot); }
+details { border-top: 1px solid var(--rand); padding-top: 8px; margin-top: 4px; }
+summary { cursor: pointer; color: var(--grau); }
+label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+label.haken { justify-content: flex-start; }
+.zahl { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.zahl input { width: 64px; font: inherit; padding: 3px 6px; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--rand); border-radius: 6px; text-align: right; }
+.zahl input:invalid { border-color: var(--rot); }
+.punkt.wartet { background: var(--grau); animation: blinken 1.6s steps(2) infinite; }
+select { font: inherit; padding: 3px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--rand); border-radius: 6px; }
+#diagnose pre { white-space: pre-wrap; word-break: break-word; font-size: 10.5px; line-height: 1.35;
+  background: var(--hell); padding: 6px 8px; border-radius: 6px; max-height: 220px; overflow: auto; margin: 6px 0; }
+#diagnose button { font-size: 12px; padding: 5px 10px; }
+.klein { color: var(--grau); font-size: 11px; margin: 6px 0 0; }
+footer { margin-top: 10px; color: var(--grau); font-size: 11px; }
