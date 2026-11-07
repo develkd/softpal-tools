@@ -1,0 +1,11 @@
+Drittanbieter-Komponenten
+=========================
+
+lib/lame.min.js
+  lamejs 1.2.1 – MP3-Encoder in JavaScript (Portierung von LAME)
+  Quelle:  https://github.com/zhuker/lamejs  (npm: lamejs@1.2.1)
+  Lizenz:  GNU Lesser General Public License v3.0 (LGPL-3.0), siehe LGPL-3.0.txt
+           und GPL-3.0.txt; Hinweise der Autoren in lamejs-LICENSE.txt.
+
+  Die Datei wird unverändert als eigenständiges Skript mitgeliefert und kann
+  durch eine andere (z. B. selbst gebaute) Version ersetzt werden.

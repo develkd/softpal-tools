@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Audio-Mitschnitt</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header>
+  <img src="../icons/icon-32.png" alt="" width="20" height="20">
+  <h1>Audio-Mitschnitt</h1>
+</header>
+
+<section class="quelle">
+  <div class="beschriftung" id="quelle-beschriftung">Ton dieses Tabs</div>
+  <div class="titel" id="tab-titel">…</div>
+</section>
+
+<section class="anzeige">
+  <span class="punkt" id="punkt" aria-hidden="true"></span>
+  <span class="zeit" id="zeit">00:00:00</span>
+  <span class="groesse" id="groesse"></span>
+</section>
+<div class="pegel" role="meter" aria-label="Pegel" aria-valuemin="0" aria-valuemax="100"><div id="pegel-balken"></div></div>
+
+<section class="knoepfe">
+  <button id="start" class="haupt">● Aufnahme starten</button>
+  <button id="pause" disabled>❚❚ Pause</button>
+</section>
+
+<p class="hinweis" id="hinweis" role="status"></p>
+
+<details id="einstellungen">
+  <summary>Einstellungen</summary>
+  <label>Qualität
+    <select id="bitrate">
+      <option value="96">96 kbit/s</option>
+      <option value="128">128 kbit/s</option>
+      <option value="160">160 kbit/s</option>
+      <option value="192" selected>192 kbit/s</option>
+      <option value="256">256 kbit/s</option>
+      <option value="320">320 kbit/s</option>
+    </select>
+  </label>
+  <label class="haken"><input type="checkbox" id="fragen"> Speicherort jedes Mal fragen</label>
+  <p class="klein">Sonst landen die Dateien unter <code>Downloads/Mitschnitte/</code>.</p>
+</details>
+
+<footer id="fusszeile">Nimmt nur auf, was dieser Tab abspielt, nicht andere Programme.</footer>
+<script src="popup.js"></script>
+</body>
+</html>
