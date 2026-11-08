@@ -29,7 +29,9 @@ Weitere Funktionen:
 Im Popup unter **„Video (MP4)“** auf **„🎬 Video aufnehmen“** klicken. Zum Beenden **„■ Video beenden & speichern“**. Start und Stopp erfolgen von Hand.
 
 - Aufgenommen wird das **Video der Seite** (das größte sichtbare, laufende `<video>`, auch in eingebetteten Playern) **mit Ton**. Nur das Video in Originalauflösung bis 1080p, ohne Seitenränder, Menüs oder Mauszeiger. Der Tab darf dabei im Hintergrund liegen.
-- **Format:** MP4 mit H.264-Video, Ton AAC (wo der Browser es kann, z. B. Windows/macOS) sonst Opus; 30 Bilder/s. Spielt in VLC, Browsern und aktuellen Playern. Kann ein Browser kein H.264 kodieren, wird VP9 verwendet.
+- **Format:** MP4 mit 30 Bildern/s. Welche Formate der Browser wirklich kodieren kann, probiert die Erweiterung beim Start kurz aus und nimmt das erste funktionierende: Bild H.264, sonst VP9, sonst AV1; Ton AAC, sonst Opus. Die Zeile unter dem Video-Knopf zeigt das gewählte Format, die Diagnose die abgelehnten.
+  - Chrome/Edge: H.264, Ton AAC (Windows/macOS) bzw. Opus (Linux).
+  - Firefox: kann je nach System kein H.264 kodieren (z. B. unter Linux) und nimmt dann **VP9 + Opus**. Solche MP4-Dateien spielen VLC, mpv, Chrome, Firefox, Edge und aktuelle Windows-Player; Apple-Geräte (QuickTime/iOS) und manche ältere Player nicht. Wer dort H.264 braucht: in Chrome aufnehmen oder umwandeln, z. B. `ffmpeg -i video.mp4 -c:v libx264 -crf 20 -c:a aac video-h264.mp4`.
 - **Dateiname:** wie der Tab, z. B. `Mein Video.mp4` (Regeln wie bei MP3, siehe oben).
 - **Bild und Ton bleiben synchron:** Die Bilder werden auf die Uhr des Tons gestempelt; geprüft mit einem Testvideo aus Blitz und Piepton (Versatz im Mittel unter einem Bild).
 - Die Daten fließen während der Aufnahme laufend in die Erweiterung (fragmentiertes MP4). Auch lange Videos belasten die Seite nicht. Wird der Tab geschlossen oder die Seite neu geladen, wird das bis dahin Aufgenommene gespeichert.
@@ -65,7 +67,7 @@ Hinweis: Als Stille gilt ein Pegel unter −60 dBFS.
 | Was wird aufgenommen | **alles**, was der Tab ausgibt: Videos, Musik, Web Audio, WebRTC-Anrufe | `<audio>`/`<video>`-Elemente (YouTube, Mediatheken, Podcasts …) und WebRTC-Streams an Media-Elementen |
 | Nicht erfasst | – | reine Web-Audio-Ausgaben (z. B. Spiele, manche Synthesizer); Medien von **fremden Domains ohne CORS** (sie spielen normal weiter, fehlen aber in der Aufnahme; das Popup zeigt die Anzahl an) |
 | Seitenwechsel im Tab | Aufnahme läuft weiter | Aufnahme läuft weiter, Abgriff wird automatisch neu eingefügt |
-| Getestet | automatisiert in Chromium, auch Automatik und Video; Video-Aufnahme von Hand in Chrome (1.4.3) | von Hand in Firefox: Aufnahme auf YouTube (ab 1.0.3), Automatik (1.2.0), Dateinamen aus dem Tabtitel (1.3.0); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
+| Getestet | automatisiert in Chromium, auch Automatik und Video; Video-Aufnahme von Hand in Chrome (1.4.3) | von Hand in Firefox: Aufnahme auf YouTube (ab 1.0.3), Automatik (1.2.0), Dateinamen aus dem Tabtitel (1.3.0), Video-Aufnahme auf YouTube (1.4.3, dort mit VP9/Opus); automatisiert: Hintergrundseite mit nachgebildeter Firefox-API, Abgriff in Chromium simuliert, `web-ext lint` ohne Fehler |
 
 **Diagnose (Firefox):** Klappt etwas nicht, im Popup unten „Diagnose“ aufklappen und „Diagnose kopieren“. Dort steht, in wie viele Frames der Abgriff eingefügt wurde, welche Audio-/Videoelemente er gefunden hat, wie viele Tonblöcke ankommen und welche Fehler auftraten.
 
