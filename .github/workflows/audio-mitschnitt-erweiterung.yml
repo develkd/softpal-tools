@@ -1,0 +1,51 @@
+name: Audio-Mitschnitt Browser-Erweiterung
+
+on:
+  push:
+    paths:
+      - 'audio-mitschnitt-erweiterung/**'
+      - '.github/workflows/audio-mitschnitt-erweiterung.yml'
+  pull_request:
+    paths:
+      - 'audio-mitschnitt-erweiterung/**'
+      - '.github/workflows/audio-mitschnitt-erweiterung.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: audio-mitschnitt-erweiterung
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit-Tests
+        run: npm test
+      - name: Bauen
+        run: npm run build
+      - name: Firefox-Prüfung (web-ext lint)
+        run: npx -y web-ext@8 lint -s dist/firefox
+      - name: Playwright + Chromium installieren
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: End-to-End-Tests (Chromium)
+        env:
+          LANG: C.UTF-8
+          LC_ALL: C.UTF-8
+        run: |
+          xvfb-run -a node tests/e2e-chrome.mjs
+          xvfb-run -a node tests/e2e-chrome-automatik.mjs
+          xvfb-run -a node tests/e2e-chrome-knistern.mjs
+          xvfb-run -a node tests/e2e-chrome-video.mjs
+          node tests/e2e-abgriff.mjs
+      - name: Erweiterungen hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-mitschnitt-erweiterung
+          path: |
+            audio-mitschnitt-erweiterung/dist/*.zip
+          if-no-files-found: error
