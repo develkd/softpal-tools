@@ -1902,3 +1902,10 @@ If you want to offset all timestamps of a track such that the first one is zero,
   return __toCommonJS(src_exports);
 })();
 if (typeof module === "object" && typeof module.exports === "object") Object.assign(module.exports, Mp4Muxer)
+
+// audio-mitschnitt: ausdrücklich global machen, damit spätere Inhaltsskripte
+// (lib/video.js) den Namen auch in Firefox sicher finden
+globalThis.Mp4Muxer = Mp4Muxer;
+// Rückgabewert des Skripts: nichts (Firefox gibt ihn an executeScript zurück
+// und lehnt nicht kopierbare Werte ab)
+void 0;

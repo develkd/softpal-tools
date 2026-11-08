@@ -93,6 +93,7 @@
       this._start = null;
       for (const k of this.kandidaten) { try { k.port.postMessage({ typ: 'abbruch' }); k.port.disconnect(); } catch (_) { /* weg */ } }
       this._leeren();
+      this.letzterFehler = text;
       nein(new Error(text));
     }
 
@@ -131,6 +132,7 @@
         this.info.tonSekunden = m.tonSekunden;
         this.info.letztesBildSek = m.letztesBildSek;
       } else if (m.typ === 'fehler') {
+        this.letzterFehler = m.text;
         if (this.zustand === 'startet') this._startFehler(m.text);
         else this.fehler = m.text;
       } else if (m.typ === 'ende') {
@@ -141,6 +143,11 @@
 
     _auswaehlen() {
       this._auswahlTimer = null;
+      this.auswahlInfo = this.kandidaten.map((k) => (k.kandidat
+        ? `${k.kandidat.seite || '?'}: ${k.kandidat.flaeche > 0 ? `${k.kandidat.breite}×${k.kandidat.hoehe}${k.kandidat.spielt ? ' spielt' : ' pausiert'}` : 'kein Video'}` +
+          (k.kandidat.faehig ? ` [WebCodecs ${k.kandidat.faehig.webcodecs ? 'ja' : 'NEIN'}, MP4 ${k.kandidat.faehig.muxer ? 'ja' : 'NEIN'}, ` +
+            `<video> ${k.kandidat.faehig.videos}]` : '')
+        : '(keine Antwort)'));
       const mitVideo = this.kandidaten.filter((k) => k.kandidat && k.kandidat.flaeche > 0);
       mitVideo.sort((a, b) => (Number(b.kandidat.spielt) - Number(a.kandidat.spielt)) || (b.kandidat.flaeche - a.kandidat.flaeche));
       const bester = mitVideo[0];

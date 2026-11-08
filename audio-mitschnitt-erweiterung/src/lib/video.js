@@ -28,6 +28,7 @@
     return;
   }
 
+  const Muxer = globalThis.Mp4Muxer;
   const BILDRATE = 30;
   const AUDIO_RATE = 48000;
   const medien = globalThis.__audioMitschnittMedien;
@@ -92,14 +93,22 @@
   // ---- Aufnahme --------------------------------------------------------------
   let port = null;
   let aufnahme = null;
+  let schritt = ''; // aktueller Arbeitsschritt, für verständliche Fehlermeldungen
 
   function senden(m) {
     if (!port) return;
     try { port.postMessage(m); } catch (_) { /* Port weg */ }
   }
 
+  function fehlerText(fehler, schritt) {
+    const name = fehler && fehler.name && fehler.name !== 'Error' ? `${fehler.name}: ` : '';
+    return `${schritt ? `[${schritt}] ` : ''}${name}${fehler && fehler.message ? fehler.message : fehler}`;
+  }
+
   async function starten() {
     if (aufnahme) return;
+    schritt = 'Prüfen';
+    if (!Muxer) throw new Error('MP4-Bibliothek nicht geladen (lib/mp4-muxer.js).');
     if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
       throw new Error('Dieser Browser kann keine Videos kodieren (WebCodecs fehlt). Firefox ab Version 130 bzw. Chrome ab 94 nötig.');
     }
@@ -110,19 +119,23 @@
     const zeichner = leinwand.getContext('2d');
 
     // Fremde Domain / geschützt? Ein Probebild zeigt es (SecurityError).
+    schritt = 'Probebild';
     try {
       zeichner.drawImage(el, 0, 0, breite, hoehe);
       new VideoFrame(leinwand, { timestamp: 0 }).close();
     } catch (fehler) {
-      throw new Error('Dieses Video ist gegen Aufnahme geschützt (fremde Domain).');
+      if (fehler && fehler.name === 'SecurityError') throw new Error('Dieses Video ist gegen Aufnahme geschützt (fremde Domain).');
+      throw fehler;
     }
 
     const bitrate = Math.max(1e6, Math.min(8e6, Math.round(breite * hoehe * BILDRATE * 0.1)));
+    schritt = 'Video-Encoder';
     const vCodec = await videoCodec(breite, hoehe, bitrate);
     if (!vCodec) throw new Error('Kein passender Video-Encoder (H.264/VP9) verfügbar.');
     const aCodec = await audioCodec();
 
     // Ton anschließen (falls möglich)
+    schritt = 'Ton';
     let ctx = null;
     let tonQuelle = null;
     let tonHinweis = '';
@@ -152,8 +165,9 @@
       senden({ typ: 'fehler', text: String(fehler && fehler.message ? fehler.message : fehler) });
     };
 
-    a.muxer = new Mp4Muxer.Muxer({
-      target: new Mp4Muxer.StreamTarget({
+    schritt = 'MP4';
+    a.muxer = new Muxer.Muxer({
+      target: new Muxer.StreamTarget({
         onData: (daten, position) => {
           if (position !== a.position) fehlerMelden(new Error(`MP4-Daten nicht fortlaufend (${position} ≠ ${a.position})`));
           a.position = position + daten.length;
@@ -169,6 +183,7 @@
       firstTimestampBehavior: 'cross-track-offset',
     });
 
+    schritt = 'Video-Encoder starten';
     a.videoEncoder = new VideoEncoder({
       output: (chunk, meta) => { try { a.muxer.addVideoChunk(chunk, meta); } catch (f) { fehlerMelden(f); } },
       error: fehlerMelden,
@@ -176,6 +191,7 @@
     a.videoEncoder.configure(vCodec.config);
 
     if (tonQuelle) {
+      schritt = 'Ton-Encoder starten';
       a.audioEncoder = new AudioEncoder({
         output: (chunk, meta) => { try { a.muxer.addAudioChunk(chunk, meta); } catch (f) { fehlerMelden(f); } },
         error: fehlerMelden,
@@ -225,6 +241,7 @@
       pufferSenden(a);
     }, 1000);
 
+    schritt = 'läuft';
     senden({ typ: 'gestartet', breite, hoehe, video: vCodec.name, audio: tonQuelle ? aCodec.name : tonHinweis || 'ohne Ton' });
   }
 
@@ -300,7 +317,10 @@
     port = api.runtime.connect({ name: 'audio-mitschnitt-video' });
     port.onMessage.addListener((m) => {
       if (m.typ === 'start') {
-        starten().catch((fehler) => senden({ typ: 'fehler', text: String(fehler.message || fehler) }));
+        starten().catch((fehler) => {
+          if (aufnahme) beenden(false);
+          senden({ typ: 'fehler', text: fehlerText(fehler, schritt) });
+        });
       } else if (m.typ === 'stopp') {
         beenden(true).finally(trennen);
       } else if (m.typ === 'abbruch') {
@@ -311,6 +331,13 @@
     const el = bestesVideo();
     senden({
       typ: 'kandidat',
+      faehig: {
+        webcodecs: typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined',
+        muxer: Boolean(Muxer),
+        abgriff: typeof globalThis.erstelleAbgriff,
+        medien: Boolean(medien),
+        videos: document.querySelectorAll('video').length,
+      },
       flaeche: el ? Math.max(1, sichtbareFlaeche(el)) : 0,
       spielt: Boolean(el && !el.paused),
       breite: el ? el.videoWidth : 0,

@@ -174,6 +174,13 @@ function diagnoseText() {
     `Eingefügt: ${diag.eingefuegt || '–'} · verbundene Frames: ${ports.size}`,
   ];
   if (diag.abgewiesen.length) zeilen.push(`Abgewiesen: ${diag.abgewiesen.join('; ')}`);
+  const v = video.status();
+  zeilen.push(`Video: ${v.zustand}${v.breite ? ` · ${v.breite}×${v.hoehe} ${v.video || ''}/${v.audio || ''}` : ''}` +
+    `${v.bytes ? ` · ${Math.round(v.bytes / 1024)} KB` : ''}${v.fehler ? ` · Fehler: ${v.fehler}` : ''}` +
+    ` · eingefügt: ${diag.videoEingefuegt || '–'}`);
+  if (video.auswahlInfo) zeilen.push(`Video-Kandidaten: ${video.auswahlInfo.join('; ') || 'keine'}`);
+  if (video.letzterFehler) zeilen.push(`Video-Fehler: ${video.letzterFehler}`);
+  if (video.letztes) zeilen.push(`Letztes Video: ${video.letztes.gespeichert || video.letztes.fehler || 'nicht gespeichert'}`);
   for (const [id, f] of diag.frames) {
     const d = f.diag || {};
     zeilen.push(`Frame ${id.split(':')[0]}${d.oben ? ' (oben)' : ''} ${d.seite || ''}: ` +
@@ -322,9 +329,11 @@ async function videoStarten({ tabId: tab, titel }) {
   const bereit = video.vorbereiten({ titel, tabId: tab });
   try {
     for (const file of VIDEO_SKRIPTE) {
-      await browser.tabs.executeScript(tab, { file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle' });
+      const ergebnisse = await browser.tabs.executeScript(tab, { file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle' });
+      diag.videoEingefuegt = `${file.split('/').pop()} in ${ergebnisse.length} Frame(s)`;
     }
   } catch (fehler) {
+    diag.videoEingefuegt = `Fehler: ${fehler && fehler.message ? fehler.message : fehler}`;
     await video.stoppen();
     throw new Error(/Missing host permission|about:|Cannot access/i.test(String(fehler))
       ? 'Auf dieser Seite kann kein Video aufgenommen werden (Browser-interne Seite).'
