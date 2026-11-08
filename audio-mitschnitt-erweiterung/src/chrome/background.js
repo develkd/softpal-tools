@@ -151,6 +151,63 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (autoTabId === tabId) await chrome.storage.session.set({ autoTabId: null });
 });
 
+// ---- Video-Aufnahme (MP4) ---------------------------------------------------
+const VIDEO_SKRIPTE = ['lib/mp4-muxer.js', 'lib/mp4-bloecke.js', 'lib/abgriff.js', 'lib/resampler.js', 'lib/medienquelle.js', 'lib/video.js'];
+
+/** Diagnose-Text für das Popup (wie in Firefox). */
+async function diagnoseText(st) {
+  const v = st.video || {};
+  const { letzterVideoFehler = '' } = await chrome.storage.session.get('letzterVideoFehler');
+  const zeilen = [
+    `Audio-Mitschnitt ${chrome.runtime.getManifest().version} · Chrome · ${(navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/) || [''])[0]}`,
+    `Aufnahme: ${st.laeuft ? `läuft (${st.automatisch ? 'automatisch' : 'von Hand'}${st.wartetAufTon ? ', wartet auf Ton' : ''})` : 'keine'}` +
+      ` · Tab ${st.tabId ?? '–'} · Abgriff ${st.abgriffArt || '–'}`,
+    `Video: ${v.zustand || 'aus'}${v.breite ? ` · ${v.breite}×${v.hoehe} ${v.video || ''}/${v.audio || ''}` : ''}` +
+      `${v.bytes ? ` · ${Math.round(v.bytes / 1024)} KB` : ''}${v.bilder ? ` · ${v.bilder} Bilder` : ''}` +
+      `${v.verworfen ? ` (${v.verworfen} ausgelassen)` : ''}${v.fehler ? ` · Fehler: ${v.fehler}` : ''}`,
+  ];
+  if (v.auswahlInfo && v.auswahlInfo.length) zeilen.push(`Video-Kandidaten: ${v.auswahlInfo.join('; ')}`);
+  const fehler = v.letzterFehler || letzterVideoFehler;
+  if (fehler) zeilen.push(`Video-Fehler: ${fehler}`);
+  if (v.versucht && v.versucht.length) zeilen.push(`Abgelehnte Formate: ${v.versucht.join('; ')}`);
+  if (v.letztes) zeilen.push(`Letztes Video: ${v.letztes.gespeichert || v.letztes.fehler || 'nicht gespeichert'}`);
+  zeilen.push(`Offscreen-Dokument: ${(await offscreenVorhanden()) ? 'offen' : 'geschlossen'}`);
+  return zeilen.join('\n');
+}
+
+async function videoStarten(nachricht) {
+  try {
+    await chrome.storage.session.set({ letzterVideoFehler: '' });
+    return await videoStartenIntern(nachricht);
+  } catch (fehler) {
+    await chrome.storage.session.set({ letzterVideoFehler: fehler.message || String(fehler) });
+    throw fehler;
+  }
+}
+
+async function videoStartenIntern({ tabId, titel }) {
+  await offscreenSicherstellen();
+  const vorbereitet = await anOffscreen({ typ: 'videoVorbereiten', tabId, titel });
+  if (vorbereitet && vorbereitet.fehler) throw new Error(vorbereitet.fehler);
+  try {
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: VIDEO_SKRIPTE });
+  } catch (fehler) {
+    await anOffscreen({ typ: 'videoStoppen' });
+    throw new Error(uebersetzen(fehler));
+  }
+  const ergebnis = await anOffscreen({ typ: 'videoWarteStart' });
+  if (ergebnis && ergebnis.fehler) throw new Error(ergebnis.fehler);
+  return ergebnis;
+}
+
+/** Offscreen-Dokument schließen, wenn nichts mehr läuft. */
+async function offscreenAufraeumen() {
+  const status = await anOffscreen({ typ: 'status' });
+  if (status && !status.laeuft && !status.offeneDateien && !(status.video && status.video.laeuft)) {
+    await chrome.offscreen.closeDocument().catch(() => {});
+  }
+}
+
 // Download, sobald das Offscreen-Dokument die Datei fertig hat
 const offeneDownloads = new Map(); // downloadId -> blob-URL
 
@@ -179,10 +236,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
     const url = offeneDownloads.get(delta.id);
     offeneDownloads.delete(delta.id);
     await anOffscreen({ typ: 'freigeben', url });
-    const status = await anOffscreen({ typ: 'status' });
-    if (status && !status.laeuft && !status.offeneDateien) {
-      await chrome.offscreen.closeDocument().catch(() => {});
-    }
+    await offscreenAufraeumen();
   }
 });
 
@@ -196,10 +250,16 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         const z = await automatikZustand();
         const auto = { automatikVerfuegbar: 'tab', automatik: z.automatik, autoTabId: z.autoTabId,
           letzteMeldung: z.letzteMeldung };
-        return { ...((await anOffscreen({ typ: 'status' })) || { laeuft: false }), ...auto };
+        const st = { video: { laeuft: false }, ...((await anOffscreen({ typ: 'status' })) || { laeuft: false }), ...auto };
+        st.diagnose = await diagnoseText(st);
+        return st;
       }
       case 'automatik':
         return automatikSetzen(nachricht);
+      case 'videoStarten':
+        return videoStarten(nachricht);
+      case 'videoStoppen':
+        return (await anOffscreen({ typ: 'videoStoppen' })) || { laeuft: false };
       case 'pausieren':
       case 'fortsetzen':
         return anOffscreen({ typ: nachricht.typ });
@@ -218,7 +278,7 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
       }
       case 'fertig': // vom Offscreen-Dokument: Datei liegt bereit
         // weiter: Automatik teilt nur die Datei, Tab-Aufnahme läuft weiter
-        abzeichen(nachricht.weiter ? 'wartet' : false);
+        if (!nachricht.video) abzeichen(nachricht.weiter ? 'wartet' : false);
         {
           const { id, name } = await speichern(nachricht);
           if (nachricht.automatisch) {
@@ -233,7 +293,7 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         }
         if (!nachricht.weiter) {
           // Aufnahme ganz beendet: Dokument nach der Antwort schließen
-          setTimeout(() => chrome.offscreen.closeDocument().catch(() => {}), 200);
+          setTimeout(() => offscreenAufraeumen().catch(() => {}), 200);
         }
         return {};
       default:

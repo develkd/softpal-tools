@@ -120,9 +120,30 @@ async function stoppen({ stilleVerwerfen = false, verwerfen = false } = {}) {
   return { ...status, gespeichert: (antwort && antwort.name) || aufnahme.dateiname };
 }
 
+// ---- Video-Aufnahme (MP4): Daten kommen per Port vom Inhaltsskript lib/video.js
+const video = new VideoSammler({
+  beiFertig: async (blob, info) => {
+    const url = URL.createObjectURL(blob);
+    offeneUrls.add(url);
+    const antwort = await chrome.runtime.sendMessage({
+      ziel: 'hintergrund', typ: 'fertig', url, video: true, tabId: info.tabId,
+      dateinamen: dateinamenFuer(info.titel, new Date(info.startzeit), '.mp4', 'Video'),
+    });
+    if (antwort && antwort.fehler) throw new Error(antwort.fehler);
+    return antwort && antwort.name;
+  },
+});
+chrome.runtime.onConnect.addListener((port) => { video.portAnnehmen(port); });
+
 function status() {
   const s = aufnahme ? aufnahme.status() : { laeuft: false };
-  return { ...s, tabId, offeneDateien: offeneUrls.size, abgriffArt: abgriff ? abgriff.art : null };
+  return {
+    ...s, tabId, offeneDateien: offeneUrls.size, abgriffArt: abgriff ? abgriff.art : null,
+    video: {
+      ...video.status(), letztes: video.letztes || null,
+      auswahlInfo: video.auswahlInfo || null, letzterFehler: video.letzterFehler || null,
+    },
+  };
 }
 
 chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
@@ -137,6 +158,11 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         if (aufnahme && aufnahme.automatik) aufnahme.automatik.nachStille = autoEinst.nachStille;
         return status();
       case 'status': return status();
+      case 'videoVorbereiten':
+        video.vorbereiten({ titel: nachricht.titel, tabId: nachricht.tabId });
+        return {};
+      case 'videoWarteStart': return video.warteAufStart();
+      case 'videoStoppen': return video.stoppen();
       case 'pausieren': if (aufnahme) aufnahme.pausieren(); return status();
       case 'fortsetzen': if (aufnahme) aufnahme.fortsetzen(); return status();
       case 'freigeben':

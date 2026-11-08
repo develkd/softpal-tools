@@ -58,6 +58,7 @@ const dateien = {
   '/lib/resampler.js': readFileSync(new URL('lib/resampler.js', src)),
   '/lib/aufnahme.js': readFileSync(new URL('lib/aufnahme.js', src)),
   '/lib/abgriff.js': readFileSync(new URL('lib/abgriff.js', src)),
+  '/lib/medienquelle.js': readFileSync(new URL('lib/medienquelle.js', src)),
   '/lib/abgriff-worklet.js': readFileSync(new URL('lib/abgriff-worklet.js', src)),
   '/firefox/tap.js': readFileSync(new URL('firefox/tap.js', src)),
   '/ton1000.wav': wav(1000, 2),
@@ -91,6 +92,7 @@ try {
     await Promise.all([document.getElementById('eigen').play(), document.getElementById('fremd').play()]);
     aufnahme.starten();
     await laden('/lib/abgriff.js');
+    await laden('/lib/medienquelle.js'); // wie in firefox/background.js
     await laden('/firefox/tap.js');
   });
   await seite.waitForTimeout(2000);

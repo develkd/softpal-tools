@@ -46,7 +46,7 @@ function aufnahmeRate() {
 
 async function abgriffEinfuegen() {
   try {
-    for (const file of ['/lib/abgriff.js', '/firefox/tap.js']) {
+    for (const file of ['/lib/abgriff.js', '/lib/medienquelle.js', '/firefox/tap.js']) {
       const ergebnisse = await browser.tabs.executeScript(tabId, {
         file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle',
       });
@@ -174,6 +174,14 @@ function diagnoseText() {
     `Eingefügt: ${diag.eingefuegt || '–'} · verbundene Frames: ${ports.size}`,
   ];
   if (diag.abgewiesen.length) zeilen.push(`Abgewiesen: ${diag.abgewiesen.join('; ')}`);
+  const v = video.status();
+  zeilen.push(`Video: ${v.zustand}${v.breite ? ` · ${v.breite}×${v.hoehe} ${v.video || ''}/${v.audio || ''}` : ''}` +
+    `${v.bytes ? ` · ${Math.round(v.bytes / 1024)} KB` : ''}${v.fehler ? ` · Fehler: ${v.fehler}` : ''}` +
+    ` · eingefügt: ${diag.videoEingefuegt || '–'}`);
+  if (video.auswahlInfo) zeilen.push(`Video-Kandidaten: ${video.auswahlInfo.join('; ') || 'keine'}`);
+  if (video.letzterFehler) zeilen.push(`Video-Fehler: ${video.letzterFehler}`);
+  if (v.versucht && v.versucht.length) zeilen.push(`Abgelehnte Formate: ${v.versucht.join('; ')}`);
+  if (video.letztes) zeilen.push(`Letztes Video: ${video.letztes.gespeichert || video.letztes.fehler || 'nicht gespeichert'}`);
   for (const [id, f] of diag.frames) {
     const d = f.diag || {};
     zeilen.push(`Frame ${id.split(':')[0]}${d.oben ? ' (oben)' : ''} ${d.seite || ''}: ` +
@@ -186,7 +194,8 @@ function diagnoseText() {
 }
 
 function status() {
-  const auto = { automatikVerfuegbar: 'alle', automatik: einst.automatik, letzteMeldung };
+  const auto = { automatikVerfuegbar: 'alle', automatik: einst.automatik, letzteMeldung,
+    video: { ...video.status(), letztes: video.letztes || null } };
   if (!aufnahme) return { laeuft: false, ...auto, diagnose: diagnoseText() };
   if (aufnahme.laeuft) aufnahme.info = infoText();
   return { ...aufnahme.status(), tabId, ...auto, diagnose: diagnoseText() };
@@ -311,7 +320,31 @@ browser.downloads.onChanged.addListener((delta) => {
 });
 
 // Abgriffe aus den Frames des aufgenommenen Tabs
+// ---- Video-Aufnahme (MP4) -------------------------------------------------
+const VIDEO_SKRIPTE = ['/lib/mp4-muxer.js', '/lib/mp4-bloecke.js', '/lib/abgriff.js', '/lib/resampler.js', '/lib/medienquelle.js', '/lib/video.js'];
+const video = new VideoSammler({
+  beiFertig: (blob, info) => blobSpeichern(blob, dateinamenFuer(info.titel, new Date(info.startzeit), '.mp4', 'Video')),
+});
+
+async function videoStarten({ tabId: tab, titel }) {
+  const bereit = video.vorbereiten({ titel, tabId: tab });
+  try {
+    for (const file of VIDEO_SKRIPTE) {
+      const ergebnisse = await browser.tabs.executeScript(tab, { file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle' });
+      diag.videoEingefuegt = `${file.split('/').pop()} in ${ergebnisse.length} Frame(s)`;
+    }
+  } catch (fehler) {
+    diag.videoEingefuegt = `Fehler: ${fehler && fehler.message ? fehler.message : fehler}`;
+    await video.stoppen();
+    throw new Error(/Missing host permission|about:|Cannot access/i.test(String(fehler))
+      ? 'Auf dieser Seite kann kein Video aufgenommen werden (Browser-interne Seite).'
+      : String(fehler.message || fehler));
+  }
+  return bereit;
+}
+
 browser.runtime.onConnect.addListener((port) => {
+  if (video.portAnnehmen(port)) return;
   if (port.name !== 'audio-mitschnitt-abgriff') return;
   const absenderTab = port.sender && port.sender.tab ? port.sender.tab.id : null;
   if (!aufnahme || !aufnahme.laeuft || absenderTab !== tabId) {
@@ -375,6 +408,8 @@ browser.runtime.onMessage.addListener(async (nachricht) => {
         return await stoppen();
       }
       case 'status': return status();
+      case 'videoStarten': return await videoStarten(nachricht);
+      case 'videoStoppen': return await video.stoppen();
       case 'automatik':
         await browser.storage.local.set({ automatik: Boolean(nachricht.an) });
         await einstellungenLaden();

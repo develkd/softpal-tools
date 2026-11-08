@@ -20,17 +20,17 @@
     return String(n).padStart(2, '0');
   }
 
-  function dateiname(datum = new Date(), praefix = 'Mitschnitt') {
+  function dateiname(datum = new Date(), praefix = 'Mitschnitt', endung = '.mp3') {
     const d = datum;
     return `${praefix}_${d.getFullYear()}-${zweistellig(d.getMonth() + 1)}-${zweistellig(d.getDate())}` +
-      `_${zweistellig(d.getHours())}-${zweistellig(d.getMinutes())}-${zweistellig(d.getSeconds())}.mp3`;
+      `_${zweistellig(d.getHours())}-${zweistellig(d.getMinutes())}-${zweistellig(d.getSeconds())}${endung}`;
   }
 
   /**
    * Dateiname aus dem Tabtitel, z. B. "(3) Mein Lied - YouTube" -> "Mein Lied.mp3".
    * Ohne verwertbaren Titel: Datum/Uhrzeit wie dateiname().
    */
-  function dateinameAusTitel(titel, datum = new Date()) {
+  function dateinameAusTitel(titel, datum = new Date(), endung = '.mp3', praefix = 'Mitschnitt') {
     let t = String(titel || '')
       .replace(/^\(\d+\+?\)\s*/, '') // Benachrichtigungszähler "(3) "
       .replace(/\s+[-–—|]\s+YouTube( Music)?\s*$/i, '')
@@ -41,18 +41,27 @@
       .replace(/^[.~\s]+|[.\s]+$/g, ''); // nicht mit Punkt/Tilde beginnen, nicht mit Punkt enden
     if ([...t].length > 120) t = [...t].slice(0, 120).join('').trim().replace(/[.\s]+$/, '');
     if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(t)) t = `_${t}`; // reservierte Windows-Namen
-    return t ? `${t}.mp3` : dateiname(datum);
+    return t ? `${t}${endung}` : dateiname(datum, praefix, endung);
   }
 
   /** Nur ASCII: "Künstler – Titel" -> "Kuenstler - Titel" (falls Umlaute abgelehnt werden). */
-  function dateinameAscii(titel, datum = new Date()) {
+  function dateinameAscii(titel, datum = new Date(), endung = '.mp3', praefix = 'Mitschnitt') {
     const umschrift = { ä: 'ae', ö: 'oe', ü: 'ue', Ä: 'Ae', Ö: 'Oe', Ü: 'Ue', ß: 'ss', '–': '-', '—': '-', '’': "'", '‘': "'", '“': '', '”': '', '„': '' };
     const ascii = String(titel || '')
       .replace(/[äöüÄÖÜß–—’‘“”„]/g, (z) => umschrift[z])
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '') // Akzente (é -> e)
       .replace(/[^\x20-\x7e]/g, ''); // übrige Nicht-ASCII-Zeichen (Emoji usw.)
-    return dateinameAusTitel(ascii, datum);
+    return dateinameAusTitel(ascii, datum, endung, praefix);
+  }
+
+  /** Namen in Probier-Reihenfolge: Titel, ASCII-Titel, Datum/Uhrzeit. */
+  function dateinamenFuer(titel, datum = new Date(), endung = '.mp3', praefix = 'Mitschnitt') {
+    return [...new Set([
+      dateinameAusTitel(titel, datum, endung, praefix),
+      dateinameAscii(titel, datum, endung, praefix),
+      dateiname(datum, praefix, endung),
+    ])];
   }
 
   function pegelDb(l, r) {
@@ -147,7 +156,7 @@
 
     /** Namen in der Reihenfolge, in der sie beim Speichern probiert werden. */
     get dateinamen() {
-      return [...new Set([this.dateiname, dateinameAscii(this.titel, this.startzeit), this.ersatzname])];
+      return dateinamenFuer(this.titel, this.startzeit);
     }
 
     /** Sekunden mit hörbarem Ton (Automatik: entscheidet über Verwerfen). */
@@ -281,8 +290,8 @@
     }
   }
 
-  const api = { Aufnahme, Mp3Kodierer, floatZuInt16, dateiname, dateinameAusTitel, dateinameAscii, pegelDb, ERLAUBTE_BITRATEN };
-  Object.assign(wurzel, { Aufnahme, Mp3Kodierer, ERLAUBTE_BITRATEN });
+  const api = { Aufnahme, Mp3Kodierer, floatZuInt16, dateiname, dateinameAusTitel, dateinameAscii, dateinamenFuer, pegelDb, ERLAUBTE_BITRATEN };
+  Object.assign(wurzel, { Aufnahme, Mp3Kodierer, ERLAUBTE_BITRATEN, dateinamenFuer });
   wurzel.audioMitschnitt = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

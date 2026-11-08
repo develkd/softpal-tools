@@ -48,8 +48,28 @@ function abgriffVerbinden(frameId) {
 }
 
 const abgriffe = [];
+const videoPorts = [];
+/** Video-Skript (lib/video.js) in einem Frame: verbindet sich und meldet sein Video. */
+function videoVerbinden(frameId, kandidat) {
+  const an = [];
+  const nachricht = ereignisse();
+  const getrennt = ereignisse();
+  const port = {
+    name: 'audio-mitschnitt-video', sender: { tab: { id: TAB }, frameId },
+    postMessage: (m) => an.push(m), disconnect() {}, onMessage: nachricht, onDisconnect: getrennt,
+  };
+  for (const f of api.runtime.onConnect.hoerer) f(port);
+  const v = { an, senden: (m) => nachricht.hoerer.forEach((f) => f(m)) };
+  v.senden({ typ: 'kandidat', ...kandidat });
+  videoPorts.push(v);
+  return v;
+}
 api.tabs.executeScript = async (tabId, { file }) => {
   assert.equal(tabId, TAB);
+  if (file === '/lib/video.js') {
+    videoVerbinden(0, { flaeche: 50000, spielt: true });
+    videoVerbinden(3, { flaeche: 0, spielt: false }); // Frame ohne Video
+  }
   if (file === '/firefox/tap.js') abgriffe.push(abgriffVerbinden(0));
   return [undefined];
 };
@@ -271,4 +291,34 @@ test('lehnt der Browser den Titel-Dateinamen ab, wird Datum/Uhrzeit verwendet', 
   assert.equal(downloads.length, vorher + 1);
   assert.match(downloads.at(-1).filename, /^Mitschnitte\/Mitschnitt_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.mp3$/);
   await einstellen({ automatik: false });
+});
+
+test('Video: Start, Daten, Stopp -> MP4 unter dem Tabtitel gespeichert', async () => {
+  tabTitel = 'Video';
+  const vorher = downloads.length;
+  const start = nachricht({ typ: 'videoStarten', tabId: TAB, titel: '(2) Mein Video - YouTube' });
+  await warten(500); // Kandidaten sammeln (400 ms)
+  const [mitVideo, ohneVideo] = videoPorts.slice(-2);
+  assert.deepEqual(mitVideo.an, [{ typ: 'start' }]);
+  assert.deepEqual(ohneVideo.an, [{ typ: 'abbruch' }]);
+  mitVideo.senden({ typ: 'gestartet', breite: 1280, hoehe: 720, video: 'H.264', audio: 'Opus' });
+  const st = await start;
+  assert.ok(!st.fehler, st.fehler);
+  assert.equal(st.zustand, 'laeuft');
+  mitVideo.senden({ typ: 'daten', b64: Buffer.from('ftypisom').toString('base64') });
+  mitVideo.senden({ typ: 'status', sekunden: 1.5, bilder: 45, verworfen: 0 });
+  const status = await nachricht({ typ: 'status' });
+  assert.equal(status.video.laeuft, true);
+  assert.equal(status.video.breite, 1280);
+  assert.equal(status.video.bytes, 8);
+  const stopp = nachricht({ typ: 'videoStoppen' });
+  await warten(10);
+  assert.deepEqual(mitVideo.an.at(-1), { typ: 'stopp' });
+  mitVideo.senden({ typ: 'ende', sekunden: 1.6 });
+  const erg = await stopp;
+  assert.equal(erg.gespeichert, 'Mein Video.mp4');
+  assert.equal(downloads.length, vorher + 1);
+  assert.equal(downloads.at(-1).filename, 'Mitschnitte/Mein Video.mp4');
+  assert.equal(await blobs.get(downloads.at(-1).url).text(), 'ftypisom');
+  assert.equal((await nachricht({ typ: 'status' })).video.laeuft, false);
 });

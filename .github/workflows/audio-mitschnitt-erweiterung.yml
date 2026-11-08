@@ -40,6 +40,7 @@ jobs:
           xvfb-run -a node tests/e2e-chrome.mjs
           xvfb-run -a node tests/e2e-chrome-automatik.mjs
           xvfb-run -a node tests/e2e-chrome-knistern.mjs
+          xvfb-run -a node tests/e2e-chrome-video.mjs
           node tests/e2e-abgriff.mjs
       - name: Erweiterungen hochladen
         uses: actions/upload-artifact@v4
