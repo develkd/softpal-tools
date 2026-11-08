@@ -9,3 +9,8 @@ lib/lame.min.js
 
   Die Datei wird unverändert als eigenständiges Skript mitgeliefert und kann
   durch eine andere (z. B. selbst gebaute) Version ersetzt werden.
+
+lib/mp4-muxer.js
+  mp4-muxer 5.2.2 – MP4-Multiplexer für WebCodecs (Video-Aufnahme)
+  Quelle:  https://github.com/Vanilagy/mp4-muxer  (npm: mp4-muxer@5.2.2)
+  Lizenz:  MIT, siehe mp4-muxer-LICENSE.txt

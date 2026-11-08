@@ -59,6 +59,7 @@ function anzeigen(st) {
   $('bitrate').disabled = laeuft;
   if (laeuft && st.info && !$('hinweis').classList.contains('fehler')) hinweis(st.info);
   automatikAnzeigen(st);
+  videoAnzeigen(st.video);
   if (st.diagnose) {
     $('diagnose').hidden = false;
     $('diagnose-text').textContent = st.diagnose;
@@ -85,6 +86,57 @@ function automatikAnzeigen(st) {
   } else if (!st.laeuft && st.letzteMeldung && !$('hinweis').classList.contains('fehler')
       && !$('hinweis').textContent.startsWith('Gespeichert')) {
     hinweis(st.letzteMeldung);
+  }
+}
+
+let videoBeschaeftigt = false;
+let videoMeldung = null; // {text, fehler} nach Start/Stopp
+
+function videoAnzeigen(v) {
+  v = v || { laeuft: false }; // ohne Offscreen-Dokument (Chrome) fehlt der Video-Status
+  const laeuft = Boolean(v.laeuft);
+  const knopf = $('video-start');
+  knopf.disabled = videoBeschaeftigt || v.zustand === 'endet';
+  knopf.classList.toggle('stopp', laeuft);
+  knopf.textContent = v.zustand === 'endet' ? 'Video wird gespeichert …'
+    : laeuft ? '■ Video beenden & speichern' : '🎬 Video aufnehmen';
+  $('video-punkt').className = `punkt${laeuft ? ' an' : ''}`;
+  $('video-zeit').textContent = laeuft ? `${zeitText(v.sekunden)} · ${groesseText(v.bytes) || '0 KB'}` : '';
+  const info = $('video-info');
+  if (laeuft && v.zustand === 'laeuft') {
+    const teile = [`${v.breite}×${v.hoehe}`, v.video, v.audio].filter(Boolean);
+    if (v.verworfen) teile.push(`${v.verworfen} Bilder ausgelassen`);
+    info.textContent = v.fehler ? `Fehler: ${v.fehler}` : teile.join(' · ');
+    info.classList.toggle('fehler', Boolean(v.fehler));
+  } else if (laeuft) {
+    info.textContent = 'Suche Video …';
+    info.classList.remove('fehler');
+  } else if (videoMeldung) {
+    info.textContent = videoMeldung.text;
+    info.classList.toggle('fehler', videoMeldung.fehler);
+  }
+}
+
+async function videoStartStopp() {
+  videoBeschaeftigt = true;
+  videoAnzeigen({ ...(letzterStatus.video || {}) });
+  try {
+    if (letzterStatus.video && letzterStatus.video.laeuft) {
+      $('video-start').textContent = 'Video wird gespeichert …';
+      const erg = await senden('videoStoppen');
+      videoMeldung = erg.gespeichert
+        ? { text: `Gespeichert: ${erg.gespeichert} (${zeitText(erg.sekunden)}, ${groesseText(erg.bytes)})`, fehler: false }
+        : { text: erg.fehler ? `Fehler: ${erg.fehler}` : 'Video-Aufnahme beendet.', fehler: Boolean(erg.fehler) };
+    } else {
+      videoMeldung = null;
+      $('video-info').textContent = 'Suche Video …';
+      await senden('videoStarten', { tabId: aktiverTab.id, titel: aktiverTab.title || '' });
+    }
+  } catch (fehler) {
+    videoMeldung = { text: fehler.message, fehler: true };
+  } finally {
+    videoBeschaeftigt = false;
+    await aktualisieren();
   }
 }
 
@@ -182,6 +234,7 @@ async function init() {
   $('start').addEventListener('click', startStopp);
   $('pause').addEventListener('click', pauseUmschalten);
   $('automatik').addEventListener('change', automatikUmschalten);
+  $('video-start').addEventListener('click', videoStartStopp);
   $('diagnose-kopieren').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('diagnose-text').textContent);

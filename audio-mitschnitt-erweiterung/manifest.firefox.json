@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Audio-Mitschnitt",
-  "version": "1.3.0",
-  "description": "Nimmt den Ton des aktuellen Tabs auf und speichert ihn als MP3.",
+  "version": "1.4.0",
+  "description": "Nimmt den Ton des aktuellen Tabs als MP3 und Videos als MP4 auf.",
   "browser_specific_settings": {
     "gecko": {
       "id": "audio-mitschnitt@softpal.ai",

@@ -151,6 +151,32 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (autoTabId === tabId) await chrome.storage.session.set({ autoTabId: null });
 });
 
+// ---- Video-Aufnahme (MP4) ---------------------------------------------------
+const VIDEO_SKRIPTE = ['lib/mp4-muxer.js', 'lib/abgriff.js', 'lib/resampler.js', 'lib/medienquelle.js', 'lib/video.js'];
+
+async function videoStarten({ tabId, titel }) {
+  await offscreenSicherstellen();
+  const vorbereitet = await anOffscreen({ typ: 'videoVorbereiten', tabId, titel });
+  if (vorbereitet && vorbereitet.fehler) throw new Error(vorbereitet.fehler);
+  try {
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: VIDEO_SKRIPTE });
+  } catch (fehler) {
+    await anOffscreen({ typ: 'videoStoppen' });
+    throw new Error(uebersetzen(fehler));
+  }
+  const ergebnis = await anOffscreen({ typ: 'videoWarteStart' });
+  if (ergebnis && ergebnis.fehler) throw new Error(ergebnis.fehler);
+  return ergebnis;
+}
+
+/** Offscreen-Dokument schließen, wenn nichts mehr läuft. */
+async function offscreenAufraeumen() {
+  const status = await anOffscreen({ typ: 'status' });
+  if (status && !status.laeuft && !status.offeneDateien && !(status.video && status.video.laeuft)) {
+    await chrome.offscreen.closeDocument().catch(() => {});
+  }
+}
+
 // Download, sobald das Offscreen-Dokument die Datei fertig hat
 const offeneDownloads = new Map(); // downloadId -> blob-URL
 
@@ -179,10 +205,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
     const url = offeneDownloads.get(delta.id);
     offeneDownloads.delete(delta.id);
     await anOffscreen({ typ: 'freigeben', url });
-    const status = await anOffscreen({ typ: 'status' });
-    if (status && !status.laeuft && !status.offeneDateien) {
-      await chrome.offscreen.closeDocument().catch(() => {});
-    }
+    await offscreenAufraeumen();
   }
 });
 
@@ -196,10 +219,14 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         const z = await automatikZustand();
         const auto = { automatikVerfuegbar: 'tab', automatik: z.automatik, autoTabId: z.autoTabId,
           letzteMeldung: z.letzteMeldung };
-        return { ...((await anOffscreen({ typ: 'status' })) || { laeuft: false }), ...auto };
+        return { video: { laeuft: false }, ...((await anOffscreen({ typ: 'status' })) || { laeuft: false }), ...auto };
       }
       case 'automatik':
         return automatikSetzen(nachricht);
+      case 'videoStarten':
+        return videoStarten(nachricht);
+      case 'videoStoppen':
+        return (await anOffscreen({ typ: 'videoStoppen' })) || { laeuft: false };
       case 'pausieren':
       case 'fortsetzen':
         return anOffscreen({ typ: nachricht.typ });
@@ -218,7 +245,7 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
       }
       case 'fertig': // vom Offscreen-Dokument: Datei liegt bereit
         // weiter: Automatik teilt nur die Datei, Tab-Aufnahme läuft weiter
-        abzeichen(nachricht.weiter ? 'wartet' : false);
+        if (!nachricht.video) abzeichen(nachricht.weiter ? 'wartet' : false);
         {
           const { id, name } = await speichern(nachricht);
           if (nachricht.automatisch) {
@@ -233,7 +260,7 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         }
         if (!nachricht.weiter) {
           // Aufnahme ganz beendet: Dokument nach der Antwort schließen
-          setTimeout(() => chrome.offscreen.closeDocument().catch(() => {}), 200);
+          setTimeout(() => offscreenAufraeumen().catch(() => {}), 200);
         }
         return {};
       default:

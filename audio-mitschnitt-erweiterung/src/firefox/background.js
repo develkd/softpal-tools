@@ -46,7 +46,7 @@ function aufnahmeRate() {
 
 async function abgriffEinfuegen() {
   try {
-    for (const file of ['/lib/abgriff.js', '/firefox/tap.js']) {
+    for (const file of ['/lib/abgriff.js', '/lib/medienquelle.js', '/firefox/tap.js']) {
       const ergebnisse = await browser.tabs.executeScript(tabId, {
         file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle',
       });
@@ -186,7 +186,8 @@ function diagnoseText() {
 }
 
 function status() {
-  const auto = { automatikVerfuegbar: 'alle', automatik: einst.automatik, letzteMeldung };
+  const auto = { automatikVerfuegbar: 'alle', automatik: einst.automatik, letzteMeldung,
+    video: { ...video.status(), letztes: video.letztes || null } };
   if (!aufnahme) return { laeuft: false, ...auto, diagnose: diagnoseText() };
   if (aufnahme.laeuft) aufnahme.info = infoText();
   return { ...aufnahme.status(), tabId, ...auto, diagnose: diagnoseText() };
@@ -311,7 +312,29 @@ browser.downloads.onChanged.addListener((delta) => {
 });
 
 // Abgriffe aus den Frames des aufgenommenen Tabs
+// ---- Video-Aufnahme (MP4) -------------------------------------------------
+const VIDEO_SKRIPTE = ['/lib/mp4-muxer.js', '/lib/abgriff.js', '/lib/resampler.js', '/lib/medienquelle.js', '/lib/video.js'];
+const video = new VideoSammler({
+  beiFertig: (blob, info) => blobSpeichern(blob, dateinamenFuer(info.titel, new Date(info.startzeit), '.mp4', 'Video')),
+});
+
+async function videoStarten({ tabId: tab, titel }) {
+  const bereit = video.vorbereiten({ titel, tabId: tab });
+  try {
+    for (const file of VIDEO_SKRIPTE) {
+      await browser.tabs.executeScript(tab, { file, allFrames: true, matchAboutBlank: true, runAt: 'document_idle' });
+    }
+  } catch (fehler) {
+    await video.stoppen();
+    throw new Error(/Missing host permission|about:|Cannot access/i.test(String(fehler))
+      ? 'Auf dieser Seite kann kein Video aufgenommen werden (Browser-interne Seite).'
+      : String(fehler.message || fehler));
+  }
+  return bereit;
+}
+
 browser.runtime.onConnect.addListener((port) => {
+  if (video.portAnnehmen(port)) return;
   if (port.name !== 'audio-mitschnitt-abgriff') return;
   const absenderTab = port.sender && port.sender.tab ? port.sender.tab.id : null;
   if (!aufnahme || !aufnahme.laeuft || absenderTab !== tabId) {
@@ -375,6 +398,8 @@ browser.runtime.onMessage.addListener(async (nachricht) => {
         return await stoppen();
       }
       case 'status': return status();
+      case 'videoStarten': return await videoStarten(nachricht);
+      case 'videoStoppen': return await video.stoppen();
       case 'automatik':
         await browser.storage.local.set({ automatik: Boolean(nachricht.an) });
         await einstellungenLaden();

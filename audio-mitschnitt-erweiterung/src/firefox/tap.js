@@ -45,7 +45,6 @@
     abgriff: null,
     port: null,
     behandelt: new WeakMap(), // Element -> 'erfasst' | 'fremd' | 'blockiert' | 'fehler'
-    quellen: new WeakMap(), // Element -> AudioNode (bleibt bestehen)
     angeschlossen: new Set(), // AudioNodes, die am aktuellen Abgriff hängen
     inArbeit: new WeakSet(),
     zaehler: { erfasst: 0, fremd: 0, blockiert: 0, fehler: 0 },
@@ -92,12 +91,8 @@
   }
 
   async function kontext() {
-    if (!zustand.ctx) {
-      zustand.ctx = new AudioContext(); // bewusst ohne sampleRate, s. o.
-    }
-    if (zustand.ctx.state !== 'running') {
-      await Promise.race([zustand.ctx.resume(), new Promise((r) => setTimeout(r, 500))]);
-    }
+    // gemeinsam mit der Video-Aufnahme (lib/medienquelle.js), Standardrate s. o.
+    zustand.ctx = await globalThis.__audioMitschnittMedien.kontext();
     if (!zustand.abgriff && zustand.port) {
       if (!zustand.abgriffWird) {
         const rate = zustand.ctx.sampleRate;
@@ -154,18 +149,10 @@
   async function anschliessen(el, art) {
     const ctx = await kontext();
     if (!ctx || !zustand.abgriff) { zaehlen(el, 'blockiert'); return; } // Autoplay-Sperre: nichts anfassen
-    let knoten = zustand.quellen.get(el);
-    if (!knoten) {
-      if (art === 'stream') {
-        if (!el.srcObject.getAudioTracks().length) return;
-        knoten = ctx.createMediaStreamSource(el.srcObject);
-      } else {
-        // wirft z. B., wenn die Seite das Element schon selbst mit Web Audio nutzt
-        knoten = ctx.createMediaElementSource(el);
-        knoten.connect(ctx.destination); // weiterhin hörbar
-      }
-      zustand.quellen.set(el, knoten);
-    }
+    if (art === 'stream' && !el.srcObject.getAudioTracks().length) return;
+    // gemeinsame Quelle (lib/medienquelle.js); wirft z. B., wenn die Seite das
+    // Element schon selbst mit Web Audio nutzt
+    const knoten = globalThis.__audioMitschnittMedien.quelle(ctx, el);
     knoten.connect(zustand.abgriff.eingang);
     zustand.angeschlossen.add(knoten);
     zaehlen(el, 'erfasst');

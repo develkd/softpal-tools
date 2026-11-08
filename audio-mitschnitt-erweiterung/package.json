@@ -1,13 +1,13 @@
 {
   "name": "audio-mitschnitt-erweiterung",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
-  "description": "Browser-Erweiterung (Chrome/Edge/Firefox): Ton des aktuellen Tabs als MP3 aufnehmen",
+  "description": "Browser-Erweiterung (Chrome/Edge/Firefox): Ton des aktuellen Tabs als MP3 und Videos als MP4 aufnehmen",
   "license": "UNLICENSED",
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test --test-force-exit tests/*.test.mjs",
-    "test:e2e": "node build.mjs && node tests/e2e-chrome.mjs && node tests/e2e-chrome-automatik.mjs && node tests/e2e-chrome-knistern.mjs && node tests/e2e-abgriff.mjs",
+    "test:e2e": "node build.mjs && node tests/e2e-chrome.mjs && node tests/e2e-chrome-automatik.mjs && node tests/e2e-chrome-knistern.mjs && node tests/e2e-chrome-video.mjs && node tests/e2e-abgriff.mjs",
     "lint:firefox": "node build.mjs && npx -y web-ext@8 lint -s dist/firefox"
   }
 }

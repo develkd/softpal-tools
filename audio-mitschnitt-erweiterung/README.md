@@ -1,6 +1,6 @@
 # Audio-Mitschnitt – Browser-Erweiterung
 
-Erweiterung für **Chrome, Edge (und andere Chromium-Browser) sowie Firefox**, die den **Ton des aktuellen Tabs als MP3** aufnimmt. Sie funktioniert unabhängig vom Betriebssystem (Windows, macOS, Linux) und braucht keine Installation außerhalb des Browsers.
+Erweiterung für **Chrome, Edge (und andere Chromium-Browser) sowie Firefox**, die den **Ton des aktuellen Tabs als MP3** und **Videos als MP4** aufnimmt. Sie funktioniert unabhängig vom Betriebssystem (Windows, macOS, Linux) und braucht keine Installation außerhalb des Browsers.
 
 ![Popup während der Aufnahme](docs/popup.png)
 
@@ -23,6 +23,20 @@ Weitere Funktionen:
 - **Tab geschlossen**: Die Aufnahme wird automatisch beendet und gespeichert.
 - Der Ton bleibt während der Aufnahme **hörbar**.
 - Es läuft immer nur eine Aufnahme zugleich. Das Popup zeigt an, in welchem Tab.
+
+## Video aufnehmen (MP4)
+
+Im Popup unter **„Video (MP4)“** auf **„🎬 Video aufnehmen“** klicken. Zum Beenden **„■ Video beenden & speichern“**. Start und Stopp erfolgen von Hand.
+
+- Aufgenommen wird das **Video der Seite** (das größte sichtbare, laufende `<video>`, auch in eingebetteten Playern) **mit Ton**. Nur das Video in Originalauflösung bis 1080p, ohne Seitenränder, Menüs oder Mauszeiger. Der Tab darf dabei im Hintergrund liegen.
+- **Format:** MP4 mit H.264-Video, Ton AAC (wo der Browser es kann, z. B. Windows/macOS) sonst Opus; 30 Bilder/s. Spielt in VLC, Browsern und aktuellen Playern. Kann ein Browser kein H.264 kodieren, wird VP9 verwendet.
+- **Dateiname:** wie der Tab, z. B. `Mein Video.mp4` (Regeln wie bei MP3, siehe oben).
+- **Bild und Ton bleiben synchron:** Die Bilder werden auf die Uhr des Tons gestempelt; geprüft mit einem Testvideo aus Blitz und Piepton (Versatz im Mittel unter einem Bild).
+- Die Daten fließen während der Aufnahme laufend in die Erweiterung (fragmentiertes MP4). Auch lange Videos belasten die Seite nicht. Wird der Tab geschlossen oder die Seite neu geladen, wird das bis dahin Aufgenommene gespeichert.
+- Läuft das Video nicht (Pause), entstehen keine neuen Bilder.
+- Ton- und Videoaufnahme können gleichzeitig laufen.
+
+**Nicht möglich:** kopiergeschützte Videos (Netflix, Prime, Disney+ … per DRM) – das Bild bliebe schwarz – und Videos, die von einer fremden Domain ohne Freigabe geladen werden (das Popup meldet das). In Chrome wird nur in Frames aufgenommen, auf die der Klick aufs Symbol Zugriff gibt (Seite selbst; eingebettete Player anderer Domains ggf. nicht). Benötigt Firefox ab 130 bzw. Chrome ab 116 (WebCodecs).
 
 ## Automatisch aufnehmen
 
@@ -77,7 +91,7 @@ Das erzeugt `dist/chrome/`, `dist/firefox/` sowie je eine ZIP-Datei. Die ZIPs gi
 - Zum Ausprobieren: `about:debugging#/runtime/this-firefox` → **„Temporäres Add-on laden …“** → `dist/firefox/manifest.json`. Das Add-on bleibt bis zum Neustart von Firefox installiert.
 - Dauerhaft: Firefox installiert nur von Mozilla signierte Add-ons. Die ZIP bei [addons.mozilla.org](https://addons.mozilla.org/developers/) hochladen (auch „nicht gelistet“ zur eigenen Verteilung möglich) oder mit `web-ext sign` signieren. Alternativ in Firefox ESR/Developer Edition `xpinstall.signatures.required` auf `false` setzen.
 
-Benötigte Berechtigungen: Chrome: `tabCapture`, `offscreen`, `activeTab`, `downloads`, `storage`. Firefox: `<all_urls>` (Abgriff auch in eingebetteten Playern/iframes), `tabs`, `activeTab`, `downloads`, `storage`. Es werden keine Daten gesendet; alles bleibt lokal.
+Benötigte Berechtigungen: Chrome: `tabCapture`, `offscreen`, `activeTab`, `scripting` (Video-Aufnahme in der Seite), `downloads`, `storage`. Firefox: `<all_urls>` (Abgriff auch in eingebetteten Playern/iframes), `tabs`, `activeTab`, `downloads`, `storage`. Es werden keine Daten gesendet; alles bleibt lokal.
 
 ## Aufbau
 
@@ -93,6 +107,10 @@ audio-mitschnitt-erweiterung/
 │   │   ├── abgriff.js       Abgriff: Tonspur direkt (Chrome), AudioWorklet, ScriptProcessor (Rückfall)
 │   │   ├── abgriff-worklet.js  AudioWorklet-Prozessor (verlustfrei im Audio-Thread)
 │   │   ├── lame.min.js      lamejs 1.2.1 (MP3-Encoder, LGPL-3.0)
+│   │   ├── mp4-muxer.js     mp4-muxer 5.2.2 (MP4-Multiplexer, MIT)
+│   │   ├── video.js         Video-Aufnahme in der Seite (WebCodecs H.264/AAC|Opus -> MP4)
+│   │   ├── video-sammler.js nimmt die MP4-Daten an, wählt das Video, speichert
+│   │   ├── medienquelle.js  gemeinsamer AudioContext/Element-Quellen (Ton + Video)
 │   │   └── lizenzen/        Lizenztexte Drittanbieter
 │   ├── popup/               Oberfläche (für beide Browser gleich)
 │   ├── chrome/              background.js (tabCapture, Download), offscreen.* (Aufnahme)
@@ -104,6 +122,8 @@ audio-mitschnitt-erweiterung/
     ├── e2e-chrome.mjs       echter Chromium: Erweiterung laden, Töne aufnehmen, MP3 analysieren
     ├── e2e-chrome-automatik.mjs  echter Chromium: Automatik startet bei Ton, endet nach Stille
     ├── e2e-chrome-knistern.mjs   echter Chromium: 12 s Dauer-Sinus, prüft auf Aussetzer (Knistern)
+    ├── e2e-chrome-video.mjs      echter Chromium: Video als MP4 aufnehmen; Maße, Ton, Lippensynchronität
+    ├── fixtures/testvideo.webm   Testvideo (Blitz + Piepton je Sekunde)
     └── e2e-abgriff.mjs      Firefox-Abgriff in Chromium mit nachgebildeter Erweiterungs-API
 ```
 

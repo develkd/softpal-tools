@@ -10,6 +10,7 @@ if (!globalThis.lamejs) runInThisContext(readFileSync(new URL('lame.min.js', lib
 export const { Mischer } = require('../src/lib/mischer.js');
 export const { Resampler } = require('../src/lib/resampler.js');
 export const aufnahmeModul = require('../src/lib/aufnahme.js');
+export const { VideoSammler } = require('../src/lib/video-sammler.js');
 
 /** Uhr zum Weiterdrehen in Tests */
 export function testUhr(start = 1000) {
