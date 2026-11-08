@@ -62,32 +62,82 @@
     return [gerade(w), gerade(h)];
   }
 
-  async function videoCodec(breite, hoehe, bitrate) {
-    const kandidaten = [
-      ['avc1.640028', 'avc', 'H.264'],
-      ['avc1.4d0028', 'avc', 'H.264'],
-      ['avc1.42001f', 'avc', 'H.264'],
-      ['vp09.00.40.08', 'vp9', 'VP9'],
-    ];
-    for (const [codec, mux, name] of kandidaten) {
-      const config = { codec, width: breite, height: hoehe, bitrate, framerate: BILDRATE, latencyMode: 'quality' };
-      if (mux === 'avc') config.avc = { format: 'avc' };
-      try {
-        if ((await VideoEncoder.isConfigSupported(config)).supported) return { config, mux, name };
-      } catch (_) { /* nächster */ }
+  const warte = (ms) => new Promise((_, nein) => setTimeout(() => nein(new Error('Zeitüberschreitung')), ms));
+
+  /**
+   * Probelauf: Encoder mit dieser Einstellung anlegen, ein Testbild bzw. kurze
+   * Stille kodieren und auf Ausgabe warten. Firefox meldet bei
+   * isConfigSupported teils "unterstützt" und scheitert erst beim Kodieren
+   * ("The given encoding is not supported") – daher echt ausprobieren.
+   */
+  async function probelauf(art, config) {
+    let ausgaben = 0;
+    let fehler = null;
+    const init = { output: () => { ausgaben++; }, error: (f) => { fehler = f; } };
+    const enc = art === 'video' ? new VideoEncoder(init) : new AudioEncoder(init);
+    try {
+      enc.configure(config);
+      if (art === 'video') {
+        const c = new OffscreenCanvas(config.width, config.height);
+        c.getContext('2d').fillRect(0, 0, 2, 2);
+        const bild = new VideoFrame(c, { timestamp: 0, duration: 33333 });
+        enc.encode(bild, { keyFrame: true });
+        bild.close();
+      } else {
+        const n = 2048;
+        const daten = new AudioData({
+          format: 'f32-planar', sampleRate: config.sampleRate, numberOfFrames: n,
+          numberOfChannels: config.numberOfChannels, timestamp: 0, data: new Float32Array(n * config.numberOfChannels),
+        });
+        enc.encode(daten);
+        daten.close();
+      }
+      await Promise.race([enc.flush(), warte(4000)]);
+    } catch (f) {
+      fehler = fehler || f;
     }
-    return null;
+    try { enc.close(); } catch (_) { /* schon zu */ }
+    return fehler ? `${fehler.name || 'Fehler'}: ${fehler.message || fehler}` : ausgaben > 0 ? null : 'keine Ausgabe';
+  }
+
+  /** Erste Einstellung, die isConfigSupported bejaht UND im Probelauf funktioniert. */
+  async function ersteFunktionierende(art, kandidaten) {
+    const Enc = art === 'video' ? VideoEncoder : AudioEncoder;
+    const versucht = [];
+    for (const k of kandidaten) {
+      try {
+        const antwort = await Enc.isConfigSupported(k.config);
+        if (!antwort.supported) { versucht.push(`${k.config.codec}: nicht unterstützt`); continue; }
+      } catch (f) {
+        versucht.push(`${k.config.codec}: ${f.message || f}`);
+        continue;
+      }
+      const problem = await probelauf(art, k.config);
+      if (!problem) return { ...k, versucht };
+      versucht.push(`${k.config.codec}: ${problem}`);
+    }
+    return { versucht };
+  }
+
+  async function videoCodec(breite, hoehe, bitrate) {
+    const basis = { width: breite, height: hoehe, bitrate, framerate: BILDRATE };
+    const kandidaten = [];
+    for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f', 'avc1.42e01f']) {
+      kandidaten.push({ config: { ...basis, codec, avc: { format: 'avc' }, latencyMode: 'quality' }, mux: 'avc', name: 'H.264' });
+      kandidaten.push({ config: { ...basis, codec, avc: { format: 'avc' } }, mux: 'avc', name: 'H.264' });
+    }
+    for (const codec of ['vp09.00.40.08', 'vp09.00.10.08']) kandidaten.push({ config: { ...basis, codec }, mux: 'vp9', name: 'VP9' });
+    kandidaten.push({ config: { ...basis, codec: 'av01.0.08M.08' }, mux: 'av1', name: 'AV1' });
+    return ersteFunktionierende('video', kandidaten);
   }
 
   async function audioCodec() {
-    const kandidaten = [['mp4a.40.2', 'aac', 'AAC', 160000], ['opus', 'opus', 'Opus', 128000]];
-    for (const [codec, mux, name, bitrate] of kandidaten) {
-      const config = { codec, sampleRate: AUDIO_RATE, numberOfChannels: 2, bitrate };
-      try {
-        if ((await AudioEncoder.isConfigSupported(config)).supported) return { config, mux, name };
-      } catch (_) { /* nächster */ }
-    }
-    return null;
+    const basis = { sampleRate: AUDIO_RATE, numberOfChannels: 2 };
+    return ersteFunktionierende('audio', [
+      { config: { ...basis, codec: 'mp4a.40.2', bitrate: 160000 }, mux: 'aac', name: 'AAC' },
+      { config: { ...basis, codec: 'opus', bitrate: 128000 }, mux: 'opus', name: 'Opus' },
+      { config: { ...basis, codec: 'opus' }, mux: 'opus', name: 'Opus' },
+    ]);
   }
 
   // ---- Aufnahme --------------------------------------------------------------
@@ -133,8 +183,10 @@
     const bitrate = Math.max(1e6, Math.min(8e6, Math.round(breite * hoehe * BILDRATE * 0.1)));
     schritt = 'Video-Encoder';
     const vCodec = await videoCodec(breite, hoehe, bitrate);
-    if (!vCodec) throw new Error('Kein passender Video-Encoder (H.264/VP9) verfügbar.');
-    const aCodec = await audioCodec();
+    if (!vCodec.config) throw new Error(`Kein funktionierender Video-Encoder (H.264/VP9/AV1). Versucht: ${vCodec.versucht.join('; ')}`);
+    schritt = 'Ton-Encoder';
+    const ton = await audioCodec();
+    const aCodec = ton.config ? ton : null;
 
     // Ton anschließen (falls möglich)
     schritt = 'Ton';
@@ -151,20 +203,20 @@
         tonQuelle = null;
       }
     } else if (!aCodec) {
-      tonHinweis = 'ohne Ton (kein Audio-Encoder)';
+      tonHinweis = `ohne Ton (kein Audio-Encoder: ${ton.versucht.join('; ')})`;
     }
 
     const a = {
       el, breite, hoehe, leinwand, zeichner, t0: performance.now(), aktiv: true,
       bilder: 0, verworfen: 0, letzterKey: -Infinity, letzterPlatz: -1, neuesBild: true, puffer: [], pufferBytes: 0,
-      position: 0, audioTs: null, audioUhr: null, abgriff: null, timer: null, statusTimer: null, fehler: null,
+      position: 0, audioTs: null, uhrProben: [], uhrVersatz: null, mitTon: false, abgriff: null, timer: null, statusTimer: null, fehler: null,
     };
     aufnahme = a;
 
-    const fehlerMelden = (fehler) => {
+    const fehlerMelden = (fehler, herkunft) => {
       if (a.fehler) return;
       a.fehler = fehler;
-      senden({ typ: 'fehler', text: String(fehler && fehler.message ? fehler.message : fehler) });
+      senden({ typ: 'fehler', text: fehlerText(fehler, herkunft) });
     };
 
     schritt = 'MP4';
@@ -188,9 +240,9 @@
     schritt = 'Video-Encoder starten';
     a.videoEncoder = new VideoEncoder({
       output: (chunk, meta) => {
-        try { blockHinzufuegen(a.muxer, 'video', chunk, meta, Math.round(1e6 / BILDRATE)); } catch (f) { fehlerMelden(f); }
+        try { blockHinzufuegen(a.muxer, 'video', chunk, meta, Math.round(1e6 / BILDRATE)); } catch (f) { fehlerMelden(f, 'MP4 Video'); }
       },
-      error: fehlerMelden,
+      error: (f) => fehlerMelden(f, `Video-Encoder ${vCodec.config.codec}`),
     });
     a.videoEncoder.configure(vCodec.config);
 
@@ -199,9 +251,9 @@
       a.audioEncoder = new AudioEncoder({
         output: (chunk, meta) => {
           // Ersatzdauer: AAC-Rahmen 1024 Samples (Opus meist 20 ms)
-          try { blockHinzufuegen(a.muxer, 'audio', chunk, meta, Math.round((1024 / AUDIO_RATE) * 1e6)); } catch (f) { fehlerMelden(f); }
+          try { blockHinzufuegen(a.muxer, 'audio', chunk, meta, Math.round((1024 / AUDIO_RATE) * 1e6)); } catch (f) { fehlerMelden(f, 'MP4 Ton'); }
         },
-        error: fehlerMelden,
+        error: (f) => fehlerMelden(f, `Ton-Encoder ${aCodec.config.codec}`),
       });
       a.audioEncoder.configure(aCodec.config);
       const resampler = ctx.sampleRate !== AUDIO_RATE ? new Resampler(ctx.sampleRate, AUDIO_RATE) : null;
@@ -219,10 +271,14 @@
           timestamp: Math.round(a.audioTs), data: planar,
         });
         a.audioTs += (n / AUDIO_RATE) * 1e6;
-        // Tonuhr: Ende dieses Blocks ≙ jetzt. Die Bilder werden auf diese Uhr
-        // gestempelt, damit Bild und Ton nicht auseinanderlaufen (Soundkarte und
-        // Rechneruhr gehen nie exakt gleich: gemessen bis 0,27 %, also ~10 s/Stunde).
-        a.audioUhr = { ts: a.audioTs, perf: performance.now() };
+        // Tonuhr: Die Bilder werden auf die Uhr des Tons gestempelt, damit Bild und
+        // Ton nicht auseinanderlaufen (Soundkarte und Rechneruhr gehen nie exakt
+        // gleich: gemessen bis 0,27 %, also ~10 s/Stunde). Versatz Rechneruhr –
+        // Tonuhr = Minimum über die letzten Blöcke: verspätet zugestellte Blöcke
+        // (z. B. während die Encoder starten) verfälschen ihn so nicht.
+        a.uhrProben.push(performance.now() - a.audioTs / 1000);
+        if (a.uhrProben.length > 64) a.uhrProben.shift();
+        a.uhrVersatz = Math.min(...a.uhrProben);
         try { a.audioEncoder.encode(daten); } catch (f) { fehlerMelden(f); }
         daten.close();
       };
@@ -231,6 +287,7 @@
         : erstelleAbgriff(ctx, beiTon);
       tonQuelle.connect(a.abgriff.eingang);
       a.tonQuelle = tonQuelle;
+      a.mitTon = true;
     }
 
     // Bilder: im Takt von 30/s; ist das Bild sichtbar, nur wenn wirklich ein
@@ -244,12 +301,17 @@
       senden({
         typ: 'status', sekunden: (performance.now() - a.t0) / 1000, bilder: a.bilder, verworfen: a.verworfen,
         tonSekunden: a.audioTs != null ? a.audioTs / 1e6 : null, letztesBildSek: a.letzterPlatz / BILDRATE,
+        uhrStreuung: a.uhrProben.length ? Math.round(Math.max(...a.uhrProben) - Math.min(...a.uhrProben)) : null,
       });
       pufferSenden(a);
     }, 1000);
 
     schritt = 'läuft';
-    senden({ typ: 'gestartet', breite, hoehe, video: vCodec.name, audio: tonQuelle ? aCodec.name : tonHinweis || 'ohne Ton' });
+    senden({
+      typ: 'gestartet', breite, hoehe,
+      video: `${vCodec.name} (${vCodec.config.codec})`, audio: tonQuelle ? `${aCodec.name} (${aCodec.config.codec})` : tonHinweis || 'ohne Ton',
+      versucht: [...vCodec.versucht, ...(ton.versucht || [])],
+    });
   }
 
   function bildAufnehmen(a, fehlerMelden) {
@@ -259,13 +321,15 @@
     const sichtbarMitRvfc = el.requestVideoFrameCallback && !document.hidden;
     if (sichtbarMitRvfc && !a.neuesBild) return; // kein neues Videobild seit dem letzten Mal
     a.neuesBild = false;
-    if (a.videoEncoder.encodeQueueSize > 8) { a.verworfen++; return; } // Rechner kommt nicht hinterher
+    // erst bei ~1 s Rückstand Bilder auslassen (Anlaufen des Encoders soll nichts kosten)
+    if (a.videoEncoder.encodeQueueSize > BILDRATE) { a.verworfen++; return; } // Rechner kommt nicht hinterher
     // Zeit nach der Tonuhr (ohne Ton: Rechneruhr), dann auf das 30-fps-Raster
     // legen, höchstens ein Bild je Rasterplatz (gleichmäßige Wiedergabe)
     const jetzt = performance.now();
-    const sekunden = a.audioUhr
-      ? a.audioUhr.ts / 1e6 + (jetzt - a.audioUhr.perf) / 1000
-      : (jetzt - a.t0) / 1000;
+    // mit Ton: erst Bilder, wenn die Tonuhr läuft (sonst Sprung beim Wechsel der Uhr);
+    // kommt nach 1,5 s kein Ton, auf die Rechneruhr ausweichen
+    if (a.mitTon && a.uhrVersatz === null && jetzt - a.t0 < 1500) return;
+    const sekunden = a.uhrVersatz !== null ? (jetzt - a.uhrVersatz) / 1000 : (jetzt - a.t0) / 1000;
     const platz = Math.round(sekunden * BILDRATE);
     if (platz <= a.letzterPlatz) return;
     a.letzterPlatz = platz;

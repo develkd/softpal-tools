@@ -119,7 +119,7 @@
         // nur das ausgewählte Video darf Daten schicken
       } else if (m.typ === 'gestartet') {
         this.zustand = 'laeuft';
-        Object.assign(this.info, { breite: m.breite, hoehe: m.hoehe, video: m.video, audio: m.audio });
+        Object.assign(this.info, { breite: m.breite, hoehe: m.hoehe, video: m.video, audio: m.audio, versucht: m.versucht || [] });
         if (this._start) { clearTimeout(this._start.timer); this._start.ja(this.status()); this._start = null; }
       } else if (m.typ === 'daten') {
         const bytes = ausBase64(m.b64);

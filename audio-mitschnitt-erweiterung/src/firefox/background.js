@@ -180,6 +180,7 @@ function diagnoseText() {
     ` · eingefügt: ${diag.videoEingefuegt || '–'}`);
   if (video.auswahlInfo) zeilen.push(`Video-Kandidaten: ${video.auswahlInfo.join('; ') || 'keine'}`);
   if (video.letzterFehler) zeilen.push(`Video-Fehler: ${video.letzterFehler}`);
+  if (v.versucht && v.versucht.length) zeilen.push(`Abgelehnte Formate: ${v.versucht.join('; ')}`);
   if (video.letztes) zeilen.push(`Letztes Video: ${video.letztes.gespeichert || video.letztes.fehler || 'nicht gespeichert'}`);
   for (const [id, f] of diag.frames) {
     const d = f.diag || {};

@@ -169,6 +169,7 @@ async function diagnoseText(st) {
   if (v.auswahlInfo && v.auswahlInfo.length) zeilen.push(`Video-Kandidaten: ${v.auswahlInfo.join('; ')}`);
   const fehler = v.letzterFehler || letzterVideoFehler;
   if (fehler) zeilen.push(`Video-Fehler: ${fehler}`);
+  if (v.versucht && v.versucht.length) zeilen.push(`Abgelehnte Formate: ${v.versucht.join('; ')}`);
   if (v.letztes) zeilen.push(`Letztes Video: ${v.letztes.gespeichert || v.letztes.fehler || 'nicht gespeichert'}`);
   zeilen.push(`Offscreen-Dokument: ${(await offscreenVorhanden()) ? 'offen' : 'geschlossen'}`);
   return zeilen.join('\n');

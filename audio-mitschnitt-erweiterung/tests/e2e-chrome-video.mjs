@@ -62,12 +62,12 @@ try {
   await popup.waitForFunction(() => /\d+×\d+/.test(document.getElementById('video-info').textContent));
   const info = await popup.textContent('#video-info');
   console.log('Video läuft:', info);
-  assert.match(info, /^640×360 · H\.264 · (AAC|Opus)/);
+  assert.match(info, /^640×360 · H\.264 \(avc1\.[0-9a-f]+\) · (AAC|Opus) \(/);
   // Diagnose auch in Chrome
   await popup.waitForFunction(() => !document.getElementById('diagnose').hidden);
   const diagnose = await popup.textContent('#diagnose-text');
   assert.match(diagnose, /Audio-Mitschnitt [\d.]+ · Chrome/);
-  assert.match(diagnose, /Video: laeuft · 640×360 H\.264/);
+  assert.match(diagnose, /Video: laeuft · 640×360 H\.264 \(avc1/);
   assert.match(diagnose, /Video-Kandidaten: 127\.0\.0\.1:\d+: 640×360 spielt \[WebCodecs ja, MP4 ja/);
 
   await seite.bringToFront();
@@ -136,13 +136,16 @@ try {
     }
     return { breite: v.videoWidth, hoehe: v.videoHeight, dauer: v.duration, bilder: hell.length, blitze, toene, tonSpitze: spitze };
   }, mp4.toString('base64'));
-  const versatz = pruefung.blitze.map((b) => {
+  // Ereignisse in den ersten 0,5 s auslassen: dort kann die Aufnahme mitten in
+  // einem Blitz/Piepton beginnen (Teilereignis). Messraster: ein Bild (33–40 ms).
+  const versatz = pruefung.blitze.filter((b) => b >= 0.5).map((b) => {
     const t = pruefung.toene.reduce((x, y) => (Math.abs(y - b) < Math.abs(x - b) ? y : x), Infinity);
     return Math.round((t - b) * 1000);
   });
   console.log(`MP4: ${(mp4.length / 1024).toFixed(0)} KB, ${pruefung.breite}×${pruefung.hoehe}, ${pruefung.dauer.toFixed(2)} s, ` +
     `${pruefung.bilder} Bilder, Ton-Spitze ${pruefung.tonSpitze.toFixed(2)}`);
   console.log('Versatz Ton–Bild je Blitz (ms):', versatz.join(' '));
+  console.log('Blitze (s):', pruefung.blitze.map((t) => t.toFixed(3)).join(' '), '| Töne (s):', pruefung.toene.map((t) => t.toFixed(3)).join(' '));
   assert.equal(pruefung.breite, 640);
   assert.equal(pruefung.hoehe, 360);
   assert.ok(pruefung.dauer > 3.5 && pruefung.dauer < 7, `Dauer ${pruefung.dauer}`);
@@ -152,7 +155,8 @@ try {
   assert.ok(pruefung.blitze.length >= 3 && pruefung.toene.length >= 3, 'Blitze/Pieptöne nicht gefunden');
   const mittel = versatz.reduce((a, b) => a + b, 0) / versatz.length;
   assert.ok(Math.abs(mittel) < 60, `Ton und Bild im Mittel ${mittel.toFixed(0)} ms versetzt`);
-  assert.ok(versatz.every((d) => Math.abs(d) < 110), `Ton und Bild zu weit versetzt: ${versatz}`);
+  assert.ok(versatz.length >= 3, 'zu wenige Blitze nach 0,5 s');
+  assert.ok(versatz.every((d) => Math.abs(d) < 90), `Ton und Bild zu weit versetzt: ${versatz}`);
   console.log('Video-E2E OK');
 } finally {
   await context.close();
