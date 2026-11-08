@@ -152,9 +152,39 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 // ---- Video-Aufnahme (MP4) ---------------------------------------------------
-const VIDEO_SKRIPTE = ['lib/mp4-muxer.js', 'lib/abgriff.js', 'lib/resampler.js', 'lib/medienquelle.js', 'lib/video.js'];
+const VIDEO_SKRIPTE = ['lib/mp4-muxer.js', 'lib/mp4-bloecke.js', 'lib/abgriff.js', 'lib/resampler.js', 'lib/medienquelle.js', 'lib/video.js'];
 
-async function videoStarten({ tabId, titel }) {
+/** Diagnose-Text für das Popup (wie in Firefox). */
+async function diagnoseText(st) {
+  const v = st.video || {};
+  const { letzterVideoFehler = '' } = await chrome.storage.session.get('letzterVideoFehler');
+  const zeilen = [
+    `Audio-Mitschnitt ${chrome.runtime.getManifest().version} · Chrome · ${(navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/) || [''])[0]}`,
+    `Aufnahme: ${st.laeuft ? `läuft (${st.automatisch ? 'automatisch' : 'von Hand'}${st.wartetAufTon ? ', wartet auf Ton' : ''})` : 'keine'}` +
+      ` · Tab ${st.tabId ?? '–'} · Abgriff ${st.abgriffArt || '–'}`,
+    `Video: ${v.zustand || 'aus'}${v.breite ? ` · ${v.breite}×${v.hoehe} ${v.video || ''}/${v.audio || ''}` : ''}` +
+      `${v.bytes ? ` · ${Math.round(v.bytes / 1024)} KB` : ''}${v.bilder ? ` · ${v.bilder} Bilder` : ''}` +
+      `${v.verworfen ? ` (${v.verworfen} ausgelassen)` : ''}${v.fehler ? ` · Fehler: ${v.fehler}` : ''}`,
+  ];
+  if (v.auswahlInfo && v.auswahlInfo.length) zeilen.push(`Video-Kandidaten: ${v.auswahlInfo.join('; ')}`);
+  const fehler = v.letzterFehler || letzterVideoFehler;
+  if (fehler) zeilen.push(`Video-Fehler: ${fehler}`);
+  if (v.letztes) zeilen.push(`Letztes Video: ${v.letztes.gespeichert || v.letztes.fehler || 'nicht gespeichert'}`);
+  zeilen.push(`Offscreen-Dokument: ${(await offscreenVorhanden()) ? 'offen' : 'geschlossen'}`);
+  return zeilen.join('\n');
+}
+
+async function videoStarten(nachricht) {
+  try {
+    await chrome.storage.session.set({ letzterVideoFehler: '' });
+    return await videoStartenIntern(nachricht);
+  } catch (fehler) {
+    await chrome.storage.session.set({ letzterVideoFehler: fehler.message || String(fehler) });
+    throw fehler;
+  }
+}
+
+async function videoStartenIntern({ tabId, titel }) {
   await offscreenSicherstellen();
   const vorbereitet = await anOffscreen({ typ: 'videoVorbereiten', tabId, titel });
   if (vorbereitet && vorbereitet.fehler) throw new Error(vorbereitet.fehler);
@@ -219,7 +249,9 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
         const z = await automatikZustand();
         const auto = { automatikVerfuegbar: 'tab', automatik: z.automatik, autoTabId: z.autoTabId,
           letzteMeldung: z.letzteMeldung };
-        return { video: { laeuft: false }, ...((await anOffscreen({ typ: 'status' })) || { laeuft: false }), ...auto };
+        const st = { video: { laeuft: false }, ...((await anOffscreen({ typ: 'status' })) || { laeuft: false }), ...auto };
+        st.diagnose = await diagnoseText(st);
+        return st;
       }
       case 'automatik':
         return automatikSetzen(nachricht);

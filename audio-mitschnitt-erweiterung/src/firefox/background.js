@@ -320,7 +320,7 @@ browser.downloads.onChanged.addListener((delta) => {
 
 // Abgriffe aus den Frames des aufgenommenen Tabs
 // ---- Video-Aufnahme (MP4) -------------------------------------------------
-const VIDEO_SKRIPTE = ['/lib/mp4-muxer.js', '/lib/abgriff.js', '/lib/resampler.js', '/lib/medienquelle.js', '/lib/video.js'];
+const VIDEO_SKRIPTE = ['/lib/mp4-muxer.js', '/lib/mp4-bloecke.js', '/lib/abgriff.js', '/lib/resampler.js', '/lib/medienquelle.js', '/lib/video.js'];
 const video = new VideoSammler({
   beiFertig: (blob, info) => blobSpeichern(blob, dateinamenFuer(info.titel, new Date(info.startzeit), '.mp4', 'Video')),
 });

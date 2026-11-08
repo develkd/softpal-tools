@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createContext, runInContext } from 'node:vm';
 
-const DATEIEN = ['lib/mp4-muxer.js', 'lib/abgriff.js', 'lib/resampler.js', 'lib/medienquelle.js', 'lib/video.js', 'firefox/tap.js'];
+const DATEIEN = ['lib/mp4-muxer.js', 'lib/mp4-bloecke.js', 'lib/abgriff.js', 'lib/resampler.js', 'lib/medienquelle.js', 'lib/video.js', 'firefox/tap.js'];
 
 test('eingefügte Inhaltsskripte liefern undefined und teilen ihre Namen über globalThis', () => {
   const port = { postMessage() {}, onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, disconnect() {} };

@@ -9,7 +9,7 @@
  *          Erweiterung (kaum Speicher in der Seite, bei Abbruch bleibt das
  *          Bisherige erhalten).
  *
- * Benötigt vorher eingefügt: lib/mp4-muxer.js, lib/abgriff.js,
+ * Benötigt vorher eingefügt: lib/mp4-muxer.js, lib/mp4-bloecke.js, lib/abgriff.js,
  * lib/resampler.js, lib/medienquelle.js.
  *
  * Port "audio-mitschnitt-video":
@@ -100,6 +100,8 @@
     try { port.postMessage(m); } catch (_) { /* Port weg */ }
   }
 
+  const blockHinzufuegen = globalThis.__audioMitschnittBlockHinzufuegen; // lib/mp4-bloecke.js
+
   function fehlerText(fehler, schritt) {
     const name = fehler && fehler.name && fehler.name !== 'Error' ? `${fehler.name}: ` : '';
     return `${schritt ? `[${schritt}] ` : ''}${name}${fehler && fehler.message ? fehler.message : fehler}`;
@@ -108,7 +110,7 @@
   async function starten() {
     if (aufnahme) return;
     schritt = 'Prüfen';
-    if (!Muxer) throw new Error('MP4-Bibliothek nicht geladen (lib/mp4-muxer.js).');
+    if (!Muxer || !blockHinzufuegen) throw new Error('MP4-Bibliothek nicht geladen (lib/mp4-muxer.js, lib/mp4-bloecke.js).');
     if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
       throw new Error('Dieser Browser kann keine Videos kodieren (WebCodecs fehlt). Firefox ab Version 130 bzw. Chrome ab 94 nötig.');
     }
@@ -185,7 +187,9 @@
 
     schritt = 'Video-Encoder starten';
     a.videoEncoder = new VideoEncoder({
-      output: (chunk, meta) => { try { a.muxer.addVideoChunk(chunk, meta); } catch (f) { fehlerMelden(f); } },
+      output: (chunk, meta) => {
+        try { blockHinzufuegen(a.muxer, 'video', chunk, meta, Math.round(1e6 / BILDRATE)); } catch (f) { fehlerMelden(f); }
+      },
       error: fehlerMelden,
     });
     a.videoEncoder.configure(vCodec.config);
@@ -193,7 +197,10 @@
     if (tonQuelle) {
       schritt = 'Ton-Encoder starten';
       a.audioEncoder = new AudioEncoder({
-        output: (chunk, meta) => { try { a.muxer.addAudioChunk(chunk, meta); } catch (f) { fehlerMelden(f); } },
+        output: (chunk, meta) => {
+          // Ersatzdauer: AAC-Rahmen 1024 Samples (Opus meist 20 ms)
+          try { blockHinzufuegen(a.muxer, 'audio', chunk, meta, Math.round((1024 / AUDIO_RATE) * 1e6)); } catch (f) { fehlerMelden(f); }
+        },
         error: fehlerMelden,
       });
       a.audioEncoder.configure(aCodec.config);
@@ -265,7 +272,7 @@
     const ts = Math.round((platz * 1e6) / BILDRATE);
     try {
       a.zeichner.drawImage(el, 0, 0, a.breite, a.hoehe);
-      const bild = new VideoFrame(a.leinwand, { timestamp: ts });
+      const bild = new VideoFrame(a.leinwand, { timestamp: ts, duration: Math.round(1e6 / BILDRATE) });
       const schluessel = ts - a.letzterKey >= 2e6; // alle 2 s ein Schlüsselbild
       if (schluessel) a.letzterKey = ts;
       a.videoEncoder.encode(bild, { keyFrame: schluessel });

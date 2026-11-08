@@ -63,6 +63,12 @@ try {
   const info = await popup.textContent('#video-info');
   console.log('Video läuft:', info);
   assert.match(info, /^640×360 · H\.264 · (AAC|Opus)/);
+  // Diagnose auch in Chrome
+  await popup.waitForFunction(() => !document.getElementById('diagnose').hidden);
+  const diagnose = await popup.textContent('#diagnose-text');
+  assert.match(diagnose, /Audio-Mitschnitt [\d.]+ · Chrome/);
+  assert.match(diagnose, /Video: laeuft · 640×360 H\.264/);
+  assert.match(diagnose, /Video-Kandidaten: 127\.0\.0\.1:\d+: 640×360 spielt \[WebCodecs ja, MP4 ja/);
 
   await seite.bringToFront();
   await seite.waitForTimeout(4500);

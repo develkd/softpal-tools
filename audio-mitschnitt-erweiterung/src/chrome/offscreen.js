@@ -139,7 +139,10 @@ function status() {
   const s = aufnahme ? aufnahme.status() : { laeuft: false };
   return {
     ...s, tabId, offeneDateien: offeneUrls.size, abgriffArt: abgriff ? abgriff.art : null,
-    video: { ...video.status(), letztes: video.letztes || null },
+    video: {
+      ...video.status(), letztes: video.letztes || null,
+      auswahlInfo: video.auswahlInfo || null, letzterFehler: video.letzterFehler || null,
+    },
   };
 }
 
