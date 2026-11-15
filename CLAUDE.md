@@ -9,3 +9,8 @@
 - **Nie direkt auf `develop` pushen** und `develop` **nie löschen**. `develop` ist auf GitHub
   per Branch-Schutz gegen direktes Pushen und Löschen gesperrt; Änderungen landen nur über
   einen Pull Request dort.
+# CLAUDE.md
+
+Projektregeln stehen in AGENTS.md (gilt für alle Agenten, auch Claude Code):
+
+@AGENTS.md
