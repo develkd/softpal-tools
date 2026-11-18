@@ -1,0 +1,56 @@
+name: Ticket-Board
+
+on:
+  push:
+    paths:
+      - 'ticket-board/**'
+      - '.github/workflows/ticket-board.yml'
+  pull_request:
+    paths:
+      - 'ticket-board/**'
+      - '.github/workflows/ticket-board.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python-version: ['3.10', '3.13']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ticket-board
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements-dev.txt
+      - name: Tests
+        run: python -m pytest -q
+
+  browser:
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ticket-board
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright + Chromium installieren
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: End-to-End-Test (Chromium)
+        env:
+          PYTHON: python
+        run: node tests/e2e_browser.mjs
