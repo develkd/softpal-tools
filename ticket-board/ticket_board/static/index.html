@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ticket-Board</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <script src="markdown.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="kopf">
+    <div class="marke">
+      <img src="icon.svg" alt="" width="22" height="22">
+      <span>Ticket-Board</span>
+    </div>
+    <select id="projektwahl" aria-label="Projekt"></select>
+    <nav class="reiter" role="tablist" aria-label="Ansicht">
+      <button role="tab" data-ansicht="backlog" title="Backlog (b)">Backlog</button>
+      <button role="tab" data-ansicht="board" title="Sprint-Board (s)">Sprint-Board</button>
+      <button role="tab" data-ansicht="epics" title="Epics (e)">Epics</button>
+      <button role="tab" data-ansicht="probleme" id="reiter-probleme" hidden>Probleme <span class="zaehler" id="probleme-zahl"></span></button>
+    </nav>
+    <div class="kopf-rechts">
+      <input type="search" id="suche" placeholder="Suchen …  /" aria-label="Suchen">
+      <button class="knopf primaer" id="neu" title="Neuer Eintrag (c)">+ Neu</button>
+      <div class="menue">
+        <button class="knopf symbol" id="menue-knopf" aria-haspopup="true" aria-expanded="false" title="Mehr">⋯</button>
+        <div class="menue-liste" id="menue-liste" hidden>
+          <button data-aktion="projekt-neu">Neues Projekt …</button>
+          <button data-aktion="projekt-einstellungen">Projekteinstellungen …</button>
+          <button data-aktion="thema">Hell / Dunkel umschalten</button>
+          <button data-aktion="hilfe">Tastenkürzel</button>
+          <hr>
+          <button data-aktion="beenden">App beenden</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="filterleiste" id="filterleiste" aria-label="Filter"></section>
+
+  <main id="inhalt" tabindex="-1"></main>
+
+  <div id="meldung" class="meldung" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="dialog"></dialog>
+  <dialog id="dialog-klein"></dialog>
+</body>
+</html>

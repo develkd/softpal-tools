@@ -14,4 +14,4 @@ Sammlung kleiner Werkzeuge und Apps.
 - `develop` ist geschützt: kein direktes Pushen, kein Löschen.
 | [`audio-mitschnitt/`](audio-mitschnitt/README.md) | Desktop-App (Windows/Linux): schneidet alles, was auf der eingestellten Soundausgabe läuft, als MP3 mit |
 | [`audio-mitschnitt-erweiterung/`](audio-mitschnitt-erweiterung/README.md) | Browser-Erweiterung (Chrome/Edge/Firefox, jedes Betriebssystem): nimmt den Ton des aktuellen Tabs als MP3 und Videos als MP4 auf |
-
+| [`ticket-board/`](ticket-board/README.md) | Lokales Ticket-Tool à la Jira: Epics, Stories, Bugs, Backlog und Sprint-Board; jeder Eintrag ist eine Markdown-Datei, keine Datenbank |
