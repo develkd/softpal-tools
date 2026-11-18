@@ -24,12 +24,15 @@
     </nav>
     <div class="kopf-rechts">
       <input type="search" id="suche" placeholder="Suchen …  /" aria-label="Suchen">
+      <button class="knopf" id="git-knopf" hidden><span aria-hidden="true">⟳</span> <span id="git-text">Abgleichen</span> <span class="zaehler" id="git-zahl" hidden></span></button>
       <button class="knopf primaer" id="neu" title="Neuer Eintrag (c)">+ Neu</button>
       <div class="menue">
         <button class="knopf symbol" id="menue-knopf" aria-haspopup="true" aria-expanded="false" title="Mehr">⋯</button>
         <div class="menue-liste" id="menue-liste" hidden>
           <button data-aktion="projekt-neu">Neues Projekt …</button>
+          <button data-aktion="projekt-klonen">Projekt aus Git holen …</button>
           <button data-aktion="projekt-einstellungen">Projekteinstellungen …</button>
+          <button data-aktion="git">Git-Abgleich …</button>
           <button data-aktion="thema">Hell / Dunkel umschalten</button>
           <button data-aktion="hilfe">Tastenkürzel</button>
           <hr>

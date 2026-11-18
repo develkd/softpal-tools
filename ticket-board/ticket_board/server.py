@@ -20,6 +20,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from . import __version__
+from .git_abgleich import GitAbgleich, projekt_klonen
 from .speicher import Arbeitsbereich, Fehler
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -40,6 +41,13 @@ class TicketServer(ThreadingHTTPServer):
     @property
     def url(self) -> str:
         return f"http://127.0.0.1:{self.port}/"
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # Browser hat die Verbindung geschlossen (Tab zu, Neuladen) – kein Grund für einen Stacktrace
+        import sys
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return
+        super().handle_error(request, client_address)
 
     def beenden_spaeter(self) -> None:
         threading.Thread(target=self.shutdown, daemon=True).start()
@@ -179,6 +187,15 @@ class Handler(BaseHTTPRequestHandler):
         if weg == ("POST", "projekte"):
             self._json(ab.projekt_anlegen(k.get("name", ""), k.get("kuerzel", "")), 201)
             return
+        if weg == ("POST", "projekte", "klonen"):
+            if ab.einzelprojekt:
+                raise Fehler("Hier ist ein einzelnes Projekt geöffnet – zum Holen weiterer Projekte "
+                             "die App mit einem Arbeitsbereich-Ordner starten.")
+            name = projekt_klonen(ab.pfad, str(k.get("url") or ""), str(k.get("name") or ""))
+            p = ab.projekt(name)
+            e = p.einstellungen()
+            self._json({"id": p.id, "name": e["name"], "kuerzel": e["kuerzel"]}, 201)
+            return
         if weg == ("POST", "beenden"):
             self._json({"ok": True})
             self.server.beenden_spaeter()
@@ -197,6 +214,11 @@ class Handler(BaseHTTPRequestHandler):
             ("POST", "reihenfolge"): lambda: (p.reihenfolge(
                 k.get("sprint"), list(k.get("ids") or []), dict(k.get("status") or {})) or p.laden()),
             ("POST", "sprints"): lambda: p.sprint_anlegen(k),
+            ("GET", "git"): lambda: GitAbgleich(p).status(),
+            ("POST", "git", "abgleichen"): lambda: GitAbgleich(p).abgleichen(),
+            ("POST", "git", "einrichten"): lambda: GitAbgleich(p).einrichten(str(k.get("url") or "")),
+            ("POST", "git", "loesen"): lambda: GitAbgleich(p).loesen(k.get("datei"), str(k.get("wahl") or "")),
+            ("POST", "git", "abbrechen"): lambda: GitAbgleich(p).abbrechen(),
         }
         if rest in routen:
             self._json(routen[rest](), 201 if methode == "POST" and rest[-1] in ("eintraege", "sprints") else 200)

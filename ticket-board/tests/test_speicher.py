@@ -53,7 +53,19 @@ def test_eintrag_anlegen_schreibt_markdown(projekt):
     assert "## Schritte zum Nachstellen" in inhalt
     assert e["version"] == "1.10" and e["labels"] == ["auth", "ui"]
     assert projekt.eintrag_anlegen({"titel": "Zweiter"})["id"] == "TB-2"
-    assert projekt.einstellungen()["naechste_nummer"] == 3
+    assert "naechste_nummer" not in (projekt.pfad / "projekt.md").read_text(encoding="utf-8")
+
+
+def test_geloeschte_ids_werden_nicht_wiederverwendet(projekt):
+    projekt.eintrag_anlegen({"titel": "Eins"})
+    projekt.eintrag_loeschen("TB-1")
+    assert projekt.eintrag_anlegen({"titel": "Zwei"})["id"] == "TB-2"
+
+
+def test_alter_zaehler_wird_beachtet(projekt):
+    pfad = projekt.pfad / "projekt.md"
+    pfad.write_text(pfad.read_text(encoding="utf-8").replace("kuerzel: TB\n", "kuerzel: TB\nnaechste_nummer: 50\n"), encoding="utf-8")
+    assert projekt.eintrag_anlegen({"titel": "Alt"})["id"] == "TB-50"
 
 
 def test_id_zaehler_beruecksichtigt_vorhandene_dateien(projekt):

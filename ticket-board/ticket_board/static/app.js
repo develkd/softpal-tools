@@ -251,6 +251,7 @@ function render() {
   projektwahlRender();
   const mitProjekt = !!S.pid;
   [".reiter", "#suche", "#neu"].forEach((sel) => { $(sel).hidden = !mitProjekt; });
+  gitKnopfRender();
   filterRender();
   const inhalt = $("#inhalt");
   const scroll = window.scrollY;
@@ -965,6 +966,232 @@ async function beenden() {
   document.body.innerHTML = `<div class="hinweis"><h2>Ticket-Board beendet</h2><p>Du kannst dieses Fenster schließen.</p></div>`;
 }
 
+
+/* ---------- Git-Abgleich ------------------------------------------------------------------- */
+const FELD_NAMEN = {
+  titel: "Titel", status: "Status", prioritaet: "Priorität", sprint: "Sprint", epic: "Epic", eltern: "Gehört zu",
+  version: "Version", faellig: "Fällig am", farbe: "Hervorhebung", labels: "Labels", typ: "Typ", text: "Beschreibung",
+  name: "Name", ziel: "Ziel", start: "Start", ende: "Ende", "(Datei)": "Datei", "(ganze Datei)": "Ganze Datei",
+};
+const GIT_AUTO_MIN = 5;
+const git = { status: null, laeuft: false, letzterAuto: 0, statusTimer: null };
+
+const gitAuto = () => speicher.lesen("git-auto:" + S.pid) === "1";
+
+async function gitStatusLaden() {
+  if (!S.pid) { git.status = null; gitKnopfRender(); return; }
+  const pid = S.pid;
+  try {
+    const st = await api("GET", pp("/git"));
+    if (pid === S.pid) git.status = st;
+  } catch { git.status = null; }
+  gitKnopfRender();
+}
+function gitStatusSpaeter() {
+  clearTimeout(git.statusTimer);
+  git.statusTimer = setTimeout(gitStatusLaden, 400);
+}
+
+function gitKnopfRender() {
+  const k = $("#git-knopf");
+  const g = git.status;
+  k.hidden = !(g && g.aktiv) || !S.pid;
+  if (k.hidden) return;
+  const offen = g.aenderungen.length + g.vor;
+  const zahl = g.merge ? g.konflikte.length : offen;
+  k.classList.toggle("warnung", g.merge);
+  k.classList.toggle("laeuft", git.laeuft);
+  k.disabled = git.laeuft;
+  $("#git-text").textContent = git.laeuft ? "Gleiche ab …" : g.merge ? "Konflikte lösen" : "Abgleichen";
+  const z = $("#git-zahl");
+  z.hidden = !zahl || git.laeuft;
+  z.textContent = zahl;
+  const zeilen = [g.merge ? `${g.konflikte.length} Konflikt(e) warten auf deine Entscheidung` : "Mit Git abgleichen",
+    `${g.aenderungen.length} ungesicherte Änderung(en)`];
+  if (g.upstream) zeilen.push(`${g.vor} noch nicht übertragen · ${g.zurueck} neu auf dem Server (Stand letzter Abgleich)`);
+  else zeilen.push(g.remotes.length ? "Noch nie übertragen" : "Kein Server eingetragen – nur lokal");
+  if (gitAuto()) zeilen.push(`Automatisch alle ${GIT_AUTO_MIN} Minuten`);
+  k.title = zeilen.join("\n");
+}
+
+async function gitAbgleichen(still = false) {
+  if (git.laeuft || !git.status || !git.status.aktiv) return;
+  if (git.status.merge) { if (!still) konfliktDialog(); return; }
+  if (S.dlg && S.dlg.geaendert) {
+    if (!still) meldung("Bitte zuerst den offenen Eintrag speichern oder schließen", true);
+    return;
+  }
+  git.laeuft = true;
+  gitKnopfRender();
+  try {
+    const erg = await api("POST", pp("/git/abgleichen"));
+    git.status = erg.status;
+    const wichtig = erg.schritte.filter((x) => x !== "Alles aktuell");
+    if (!still || wichtig.length) meldung(erg.schritte.join(" · "));
+    await neuLaden();
+    if (erg.status.merge) konfliktDialog();
+  } catch (e) {
+    gitFehler(e, still);
+  } finally {
+    git.laeuft = false;
+    gitKnopfRender();
+  }
+}
+
+function gitFehler(e, still = false) {
+  if (still) { meldung("Automatischer Git-Abgleich fehlgeschlagen – Details über ⟳ Abgleichen", true); return; }
+  kleinDialog("Git-Abgleich fehlgeschlagen", `<div class="fehler-text">${h(e.message)}</div>`,
+    [{ text: "OK", wert: "ok", primaer: true }]);
+}
+
+function wertText(feld, wert) {
+  if (wert == null || wert === "" || (Array.isArray(wert) && !wert.length)) return "<em>leer</em>";
+  if (Array.isArray(wert)) return h(wert.join(", "));
+  if (feld === "text") return `<pre>${h(wert)}</pre>`;
+  if (feld === "status") return h(STATUS_NAMEN[wert] || wert);
+  if (feld === "prioritaet") return h(PRIO_NAMEN[wert] || wert);
+  if (feld === "typ") return h(TYP_NAMEN[wert] || wert);
+  if (feld === "farbe") { const hv = hervorhebung(farbeOk(wert)); return hv ? h(hv.name) : h(wert); }
+  if (feld === "faellig") return h(datum(String(wert)));
+  return h(wert);
+}
+
+async function konfliktDialog() {
+  const g = git.status;
+  if (!g || !g.merge) return;
+  const teile = g.konflikte.map((k) => `<section class="konflikt">
+      <h3>${k.id ? `<span class="kennung">${h(k.id)}</span> ` : ""}${h(k.titel || k.anzeige)}</h3>
+      <table><thead><tr><th style="width:22%">Feld</th><th>Hier</th><th>Andere Fassung</th></tr></thead><tbody>
+      ${k.felder.map((f) => `<tr><td>${h(FELD_NAMEN[f.feld] || f.feld)}</td><td>${wertText(f.feld, f.meine)}</td><td>${wertText(f.feld, f.fremde)}</td></tr>`).join("")}
+      </tbody></table>
+      <div class="knoepfe">
+        <button type="button" class="knopf klein" data-wert="meine|${h(k.datei)}">Meine behalten</button>
+        <button type="button" class="knopf klein" data-wert="fremde|${h(k.datei)}">Andere übernehmen</button>
+      </div></section>`).join("");
+  const r = await kleinDialog("Abgleich: bitte entscheiden",
+    `<p style="margin-top:0">Diese Einträge wurden hier und auf einem anderen Gerät <strong>im selben Feld</strong> unterschiedlich geändert.
+     Alle übrigen Änderungen wurden bereits automatisch zusammengeführt. Bis zu deiner Entscheidung siehst du deine Fassung.</p>${teile}`,
+    [{ text: "Abgleich abbrechen", wert: "abbrechen", gefahr: true }, { text: "Später", wert: "spaeter" },
+      { text: "Alle: andere übernehmen", wert: "fremde|" }, { text: "Alle: meine behalten", wert: "meine|", primaer: true }]);
+  if (!r || r.wert === "spaeter") return;
+  git.laeuft = true;
+  gitKnopfRender();
+  try {
+    let erg;
+    if (r.wert === "abbrechen") {
+      erg = await api("POST", pp("/git/abbrechen"));
+    } else {
+      const [wahl, datei] = r.wert.split(/\|(.*)/s);
+      erg = await api("POST", pp("/git/loesen"), { wahl, datei: datei || null });
+    }
+    git.status = erg.status;
+    meldung(erg.schritte.join(" · "));
+    await neuLaden();
+  } catch (e) {
+    gitFehler(e);
+    await gitStatusLaden();
+  } finally {
+    git.laeuft = false;
+    gitKnopfRender();
+  }
+  if (git.status && git.status.merge) konfliktDialog();
+}
+
+async function gitDialog() {
+  if (!S.pid) return;
+  await gitStatusLaden();
+  const g = git.status;
+  if (!g) return;
+  const urlFeld = (text) => `<label class="feld"><span>${text}</span>
+      <input type="text" name="url" placeholder="z. B. git@github.com:name/tickets.git oder D:\\Sync\\tickets.git" autocomplete="off"></label>`;
+  if (!g.verfuegbar) {
+    kleinDialog("Git-Abgleich", `<p>${h(g.grund)}</p><p>Installiere Git von <a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com</a> und starte das Ticket-Board neu.</p>`,
+      [{ text: "OK", wert: "ok", primaer: true }]);
+    return;
+  }
+  if (!g.aktiv) {
+    const r = await kleinDialog("Git-Abgleich einrichten", `<div class="formular">
+        <p style="margin:0">Das Projekt <strong>${h(S.d.projekt.name)}</strong> wird zu einem Git-Repository. Danach gleicht „⟳ Abgleichen“ es mit einem Server ab
+        (GitHub, GitLab, eigener Server oder ein geteilter Ordner).</p>
+        ${urlFeld("Adresse eines <strong>leeren</strong> Repositorys (optional – ohne Adresse nur lokale Versionierung)")}
+        <p style="margin:0;font-size:12px;color:var(--text-2)">Die Anmeldung läuft über deine normale Git-Einrichtung (SSH-Schlüssel oder Git Credential Manager).
+        Gibt es das Projekt schon auf dem Server, nutze stattdessen „Projekt aus Git holen …“.</p></div>`,
+      [{ text: "Abbrechen", wert: "nein" }, { text: "Einrichten", wert: "ok", primaer: true }]);
+    if (r && r.wert === "ok") await gitEinrichten(r.form.url.value);
+    return;
+  }
+  const zeile = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+  const r = await kleinDialog("Git-Abgleich", `<div class="formular">
+      <table class="git-tabelle">
+        ${zeile("Repository", `<code>${h(g.wurzel)}</code>`)}
+        ${g.praefix ? zeile("Ticket-Ordner", `<code>${h(g.praefix)}</code>`) : ""}
+        ${zeile("Zweig", h(g.zweig || "–"))}
+        ${zeile("Server", g.remote_url ? `<code>${h(g.remote_url)}</code>` : "<em>keiner – nur lokal</em>")}
+        ${g.merge ? zeile("Achtung", `<strong>${g.konflikte.length} Konflikt(e)</strong> warten auf deine Entscheidung`) : ""}
+        ${zeile("Ungesichert", `${g.aenderungen.length} Datei(en)`)}
+        ${g.upstream ? zeile("Stand", `${g.vor} noch nicht übertragen, ${g.zurueck} neu auf dem Server`) : ""}
+        ${g.letzter_commit ? zeile("Letzter Commit", h(new Date(g.letzter_commit).toLocaleString("de-DE"))) : ""}
+      </table>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="auto"${gitAuto() ? " checked" : ""}>
+        Automatisch alle ${GIT_AUTO_MIN} Minuten abgleichen (auf diesem Gerät)</label>
+      ${g.remote_url ? "" : urlFeld("Server eintragen (Adresse eines leeren Repositorys)")}</div>`,
+    [{ text: "Schließen", wert: "zu" },
+      { text: g.merge ? "Konflikte lösen" : g.remote_url ? "Jetzt abgleichen" : "Speichern", wert: "ok", primaer: true }],
+    (form) => form.auto.addEventListener("change", () => {
+      speicher.schreiben("git-auto:" + S.pid, form.auto.checked ? "1" : "0");
+      git.letzterAuto = Date.now();
+      gitKnopfRender();
+    }));
+  if (!r || r.wert !== "ok") return;
+  if (g.merge) { konfliktDialog(); return; }
+  if (r.form.url && r.form.url.value.trim()) await gitEinrichten(r.form.url.value);
+  else if (g.remote_url || g.aenderungen.length) await gitAbgleichen();
+}
+
+async function gitEinrichten(url) {
+  git.laeuft = true;
+  gitKnopfRender();
+  try {
+    const erg = await api("POST", pp("/git/einrichten"), { url: url.trim() });
+    git.status = erg.status;
+    meldung(erg.meldung || (erg.schritte || []).join(" · ") || "Git-Abgleich eingerichtet");
+    await neuLaden();
+  } catch (e) {
+    gitFehler(e);
+    await gitStatusLaden();
+  } finally {
+    git.laeuft = false;
+    gitKnopfRender();
+  }
+}
+
+async function projektKlonen() {
+  if (S.info.einzelprojekt) {
+    meldung("Es ist ein einzelner Projektordner geöffnet. Starte die App mit einem übergeordneten Ordner, um Projekte zu holen.", true);
+    return;
+  }
+  const r = await kleinDialog("Projekt aus Git holen", `<div class="formular">
+      <p style="margin:0">Holt ein Ticket-Board-Projekt, das auf einem anderen Gerät mit Git eingerichtet wurde, in <code>${h(S.info.arbeitsbereich)}</code>.</p>
+      <label class="feld"><span>Adresse des Repositorys</span><input type="text" name="url" required placeholder="git@github.com:name/tickets.git" autocomplete="off"></label>
+      <label class="feld"><span>Ordnername (optional)</span><input type="text" name="name" maxlength="80" placeholder="automatisch aus der Adresse"></label></div>`,
+    [{ text: "Abbrechen", wert: "nein" }, { text: "Holen", wert: "ok", primaer: true }]);
+  if (!r || r.wert !== "ok") return;
+  meldung("Projekt wird geholt …");
+  try {
+    const p = await api("POST", "projekte/klonen", { url: r.form.url.value.trim(), name: r.form.name.value.trim() });
+    S.info = await api("GET", "info");
+    await projektWaehlen(p.id);
+    meldung(`Projekt „${p.name}“ geholt`);
+  } catch (e) { gitFehler(e); }
+}
+
+function gitAutoPruefen() {
+  if (!gitAuto() || git.laeuft || !git.status || !git.status.aktiv || git.status.merge) return;
+  if (Date.now() - git.letzterAuto < GIT_AUTO_MIN * 60000) return;
+  git.letzterAuto = Date.now();
+  gitAbgleichen(true);
+}
+
 /* ---------- Thema ------------------------------------------------------------------------ */
 function themaAnwenden() {
   const t = speicher.lesen("thema");
@@ -993,14 +1220,18 @@ async function projektWaehlen(pid) {
   S.filter = leererFilter();
   $("#suche").value = "";
   S.d = null;
+  git.status = null;
+  git.letzterAuto = Date.now() - GIT_AUTO_MIN * 60000 + 3000; // kurz nach dem Öffnen abgleichen
   render();
   await versuche(laden);
   render();
+  await gitStatusLaden();
 }
 
 async function neuLaden() {
   await versuche(laden);
   render();
+  gitStatusSpaeter();
   if (S.dlg && !S.dlg.neu && !S.dlg.geaendert) {
     // Offenen Dialog aktualisieren, falls die Datei geändert wurde
     const frisch = S.nachId.get(S.dlg.e.id);
@@ -1059,6 +1290,8 @@ function ereignisse() {
     ({
       "projekt-neu": projektNeu,
       "projekt-einstellungen": () => S.d && projektEinstellungen(),
+      "projekt-klonen": projektKlonen,
+      git: () => S.d && gitDialog(),
       thema: themaUmschalten,
       hilfe: hilfeZeigen,
       beenden,
@@ -1137,6 +1370,9 @@ function ereignisse() {
   document.addEventListener("visibilitychange", abfragen);
   window.addEventListener("focus", abfragen);
   abfrageTimer = setInterval(abfragen, 2000);
+  $("#git-knopf").addEventListener("click", () => gitAbgleichen());
+  setInterval(() => { if (document.visibilityState === "visible") gitStatusLaden(); }, 30000);
+  setInterval(gitAutoPruefen, 5000);
 }
 
 async function start() {
@@ -1154,7 +1390,12 @@ async function start() {
   S.pid = ids.includes(gemerkt) ? gemerkt : ids[0] || null;
   ereignisse();
   render();
-  if (S.pid) { await versuche(laden); render(); }
+  if (S.pid) {
+    git.letzterAuto = Date.now() - GIT_AUTO_MIN * 60000 + 3000;
+    await versuche(laden);
+    render();
+    await gitStatusLaden();
+  }
 }
 
 document.addEventListener("DOMContentLoaded", start);
