@@ -1111,11 +1111,13 @@ async function gitDialog() {
   }
   if (!g.aktiv) {
     const r = await kleinDialog("Git-Abgleich einrichten", `<div class="formular">
-        <p style="margin:0">Das Projekt <strong>${h(S.d.projekt.name)}</strong> wird zu einem Git-Repository. Danach gleicht „⟳ Abgleichen“ es mit einem Server ab
-        (GitHub, GitLab, eigener Server oder ein geteilter Ordner).</p>
-        ${urlFeld("Adresse eines <strong>leeren</strong> Repositorys (optional – ohne Adresse nur lokale Versionierung)")}
-        <p style="margin:0;font-size:12px;color:var(--text-2)">Die Anmeldung läuft über deine normale Git-Einrichtung (SSH-Schlüssel oder Git Credential Manager).
-        Gibt es das Projekt schon auf dem Server, nutze stattdessen „Projekt aus Git holen …“.</p></div>`,
+        <p style="margin:0">Das Projekt <strong>${h(S.d.projekt.name)}</strong> wird auf diesem Rechner zu einem Git-Repository und mit dem Server verbunden.
+        Danach gleicht „⟳ Abgleichen“ es ab.</p>
+        <div class="warnbox" style="margin:0"><span><strong>Das Repository auf dem Server legst du vorher selbst an – leer.</strong>
+        Auf GitHub: „New repository“, dabei <em>keine</em> README, .gitignore oder Lizenz auswählen. Die App legt nur das lokale Repository an.</span></div>
+        ${urlFeld("Adresse des leeren Repositorys (optional – ohne Adresse nur lokale Versionierung)")}
+        <p style="margin:0;font-size:12px;color:var(--text-2)">Die Anmeldung läuft über deine normale Git-Einrichtung (Git Credential Manager oder SSH-Schlüssel).
+        Liegt das Projekt schon auf dem Server, nutze stattdessen „Projekt aus Git holen …“.</p></div>`,
       [{ text: "Abbrechen", wert: "nein" }, { text: "Einrichten", wert: "ok", primaer: true }]);
     if (r && r.wert === "ok") await gitEinrichten(r.form.url.value);
     return;
@@ -1134,7 +1136,7 @@ async function gitDialog() {
       </table>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="auto"${gitAuto() ? " checked" : ""}>
         Automatisch alle ${GIT_AUTO_MIN} Minuten abgleichen (auf diesem Gerät)</label>
-      ${g.remote_url ? "" : urlFeld("Server eintragen (Adresse eines leeren Repositorys)")}</div>`,
+      ${g.remote_url ? "" : urlFeld("Server eintragen (Adresse eines leeren Repositorys – vorher selbst auf GitHub o. Ä. anlegen)")}</div>`,
     [{ text: "Schließen", wert: "zu" },
       { text: g.merge ? "Konflikte lösen" : g.remote_url ? "Jetzt abgleichen" : "Speichern", wert: "ok", primaer: true }],
     (form) => form.auto.addEventListener("change", () => {
