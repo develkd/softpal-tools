@@ -21,6 +21,8 @@ const S = {
   filter: leererFilter(),
   dlg: null,             // offener Eintrags-Dialog
   zieh: null,            // laufendes Drag & Drop
+  renderOffen: false,    // während des Ziehens aufgeschobenes Neuzeichnen
+  laeuft: Promise.resolve(), // laufende Speicherung im Hintergrund (Drag & Drop)
 };
 
 function leererFilter() {
@@ -113,8 +115,11 @@ function hervorhebung(farbe) {
 
 async function laden() {
   if (!S.pid) { S.d = null; S.nachId = new Map(); return; }
-  S.d = await api("GET", pp());
-  S.nachId = new Map(S.d.eintraege.map((e) => [e.id, e]));
+  datenSetzen(await api("GET", pp()));
+}
+function datenSetzen(d) {
+  S.d = d;
+  S.nachId = new Map(d.eintraege.map((e) => [e.id, e]));
 }
 
 /* ---------- Filter ------------------------------------------------------------ */
@@ -237,6 +242,8 @@ const mitPunkt = (...teile) => teile.filter(Boolean).join(" · ");
 
 /* ---------- Ansichten ------------------------------------------------------------ */
 function render() {
+  if (S.zieh) { S.renderOffen = true; return; } // Neuzeichnen würde das Ziehen abbrechen
+  S.renderOffen = false;
   $$(".reiter button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ansicht === S.ansicht)));
   const probleme = S.d ? S.d.probleme.length : 0;
   $("#reiter-probleme").hidden = !probleme;
@@ -416,6 +423,7 @@ function dndEinrichten() {
     if (el) el.classList.remove("zieht");
     entfernen();
     S.zieh = null;
+    if (S.renderOffen) render();
   });
   inhalt.addEventListener("dragover", (ev) => {
     if (!S.zieh) return;
@@ -480,14 +488,21 @@ function dndEinrichten() {
       S.d.eintraege.sort((a, b) => (a.rang ?? 1e12) - (b.rang ?? 1e12));
       render();
     }
-    await versuche(async () => {
-      await api("POST", pp("/reihenfolge"), daten);
-      if (vorher && e && vorher.sprint !== abschnitt) {
-        const s = sprints().find((x) => x.id === abschnitt);
-        meldung(`${id} → ${s ? s.name : "Backlog"}`);
+    const arbeit = (async () => {
+      const frisch = await versuche(() => api("POST", pp("/reihenfolge"), daten));
+      if (frisch && frisch.eintraege) {
+        datenSetzen(frisch);
+        render();
+        if (vorher && e && vorher.sprint !== abschnitt) {
+          const s = sprints().find((x) => x.id === abschnitt);
+          meldung(`${id} → ${s ? s.name : "Backlog"}`);
+        }
+      } else {
+        await neuLaden();
       }
-    });
-    await neuLaden();
+    })();
+    S.laeuft = arbeit.catch(() => {});
+    await arbeit;
   });
 }
 
@@ -496,13 +511,15 @@ function optionen(liste, aktuell) {
   return liste.map(([wert, text]) => `<option value="${h(wert)}"${wert === aktuell ? " selected" : ""}>${h(text)}</option>`).join("");
 }
 
-function eintragOeffnen(id, zurueck = null) {
+async function eintragOeffnen(id, zurueck = null) {
+  await S.laeuft; // sonst zeigt der Dialog einen veralteten Stand
   const e = S.nachId.get(id);
   if (!e) { meldung(`${id} nicht gefunden`, true); return; }
   dialogZeigen(e, {}, zurueck);
 }
 
-function neuerEintrag(vorgaben = {}, zurueck = null) {
+async function neuerEintrag(vorgaben = {}, zurueck = null) {
+  await S.laeuft;
   const typ = vorgaben.typ || (S.ansicht === "epics" ? "epic" : "aufgabe");
   const aktiv = aktiverSprint();
   const basis = {

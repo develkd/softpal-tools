@@ -20,6 +20,16 @@ const projekt = join(tmp, "Webshop");
 const eintraege = join(projekt, "eintraege");
 const datei = (id) => join(eintraege, readdirSync(eintraege).find((n) => n.startsWith(id + "-")));
 const lesen = (id) => readFileSync(datei(id), "utf8");
+// Die Oberfläche zeigt Änderungen sofort an und speichert im Hintergrund –
+// deshalb auf den Dateiinhalt warten statt ihn sofort zu prüfen.
+async function bisDatei(id, muster, ms = 5000) {
+  const ende = Date.now() + ms;
+  while (Date.now() < ende) {
+    try { if (muster.test(lesen(id))) return; } catch { /* Datei noch nicht da */ }
+    await new Promise((ok) => setTimeout(ok, 50));
+  }
+  assert.match(lesen(id), muster);
+}
 
 const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const server = spawn(python, ["-u", "-m", "ticket_board", tmp, "--port", "0", "--kein-browser"], { cwd: wurzel });
@@ -65,13 +75,13 @@ try {
     await form.locator("input").fill("E2E: Fehler beim Speichern");
     await form.locator("input").press("Enter");
     await seite.waitForSelector('.zeile[data-id="WS-15"]');
-    assert.match(lesen("WS-15"), /typ: bug\n/);
+    await bisDatei("WS-15", /typ: bug\n/);
   });
 
   await schritt("Per Drag & Drop in den Sprint ziehen", async () => {
     await seite.locator('.zeile[data-id="WS-15"]').dragTo(seite.locator('.liste[data-abschnitt="sprint-01"] .zeile[data-id="WS-3"]'));
     await seite.waitForFunction(() => document.querySelector('.liste[data-abschnitt="sprint-01"] .zeile[data-id="WS-15"]'));
-    assert.match(lesen("WS-15"), /sprint: sprint-01\n/);
+    await bisDatei("WS-15", /sprint: sprint-01\n/);
     const ids = await seite.locator('.liste[data-abschnitt="sprint-01"] > .zeile').evaluateAll((l) => l.map((x) => x.dataset.id));
     assert.equal(ids[0], "WS-15");
   });
@@ -81,7 +91,7 @@ try {
     await seite.waitForSelector(".spalten");
     await seite.locator('.karte[data-id="WS-15"]').dragTo(seite.locator('.karten[data-status="review"]'));
     await seite.waitForSelector('.karten[data-status="review"] .karte[data-id="WS-15"]');
-    assert.match(lesen("WS-15"), /status: review\n/);
+    await bisDatei("WS-15", /status: review\n/);
   });
 
   await schritt("Filter nach Typ", async () => {
@@ -100,6 +110,7 @@ try {
     await seite.fill('input[name="faellig"]', "2026-12-24");
     await seite.locator("#dialog button[type=submit]").click();
     await seite.waitForSelector("#dialog[open]", { state: "detached" });
+    await bisDatei("WS-15", /faellig: 2026-12-24\n/);
     const inhalt = lesen("WS-15");
     assert.match(inhalt, /titel: "E2E: Fehler beim Speichern behoben"\n/);
     assert.match(inhalt, /farbe: "#ca8a04"\n/);
@@ -113,7 +124,7 @@ try {
     await seite.locator('#d-vorschau input[data-aufgabe="2"]').check();
     await seite.locator("#dialog button[type=submit]").click();
     await seite.waitForSelector("#dialog[open]", { state: "detached" });
-    assert.match(lesen("WS-3"), /- \[x\] Sperre nach 5 Fehlversuchen/);
+    await bisDatei("WS-3", /- \[x\] Sperre nach 5 Fehlversuchen/);
   });
 
   await schritt("Änderung von außen wird live übernommen", async () => {
@@ -131,6 +142,7 @@ try {
     await seite.waitForSelector("#k-trotzdem");
     await seite.locator("#k-trotzdem").click();
     await seite.waitForSelector("#dialog[open]", { state: "detached" });
+    await bisDatei("WS-9", /titel: Meine Fassung\n/);
     const inhalt = lesen("WS-9");
     assert.match(inhalt, /titel: Meine Fassung\n/);
   });
@@ -142,8 +154,8 @@ try {
     await seite.locator("#dialog button[type=submit]").click();
     await seite.waitForSelector('#dialog[open] .unterliste >> text=Test schreiben');
     await seite.locator("#dialog [data-schliessen]").first().click();
-    assert.match(lesen("WS-16"), /sprint: sprint-01\n/);
-    assert.match(lesen("WS-16"), /eltern: WS-15\n/);
+    await bisDatei("WS-16", /sprint: sprint-01\n/);
+    await bisDatei("WS-16", /eltern: WS-15\n/);
   });
 
   await schritt("Sprint abschließen, Offenes wandert in Sprint 2, Sprint 2 starten", async () => {
@@ -152,8 +164,8 @@ try {
     await seite.locator("#dialog-klein button[type=submit]").click();
     await seite.waitForSelector('.abschnitt h2 >> text=Sprint 2');
     assert.equal(await seite.locator(".abschnitt").count(), 2);
-    assert.match(lesen("WS-4"), /sprint: sprint-02\n/);
-    assert.match(lesen("WS-5"), /sprint: sprint-01\n/); // erledigt bleibt
+    await bisDatei("WS-4", /sprint: sprint-02\n/);
+    await bisDatei("WS-5", /sprint: sprint-01\n/); // erledigt bleibt
     await seite.locator('[data-sprint-aktion="starten"]').click();
     await seite.locator("#dialog-klein button[type=submit]").click();
     await seite.waitForSelector(".spalten");

@@ -195,7 +195,7 @@ class Handler(BaseHTTPRequestHandler):
             ("PUT", "projekt"): lambda: p.projekt_aendern(k),
             ("POST", "eintraege"): lambda: p.eintrag_anlegen(k),
             ("POST", "reihenfolge"): lambda: (p.reihenfolge(
-                k.get("sprint"), list(k.get("ids") or []), dict(k.get("status") or {})) or {"ok": True}),
+                k.get("sprint"), list(k.get("ids") or []), dict(k.get("status") or {})) or p.laden()),
             ("POST", "sprints"): lambda: p.sprint_anlegen(k),
         }
         if rest in routen:
