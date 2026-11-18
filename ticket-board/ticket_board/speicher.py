@@ -180,7 +180,6 @@ class Projekt:
         dok = Dokument({
             "name": name,
             "kuerzel": kuerzel,
-            "naechste_nummer": 1,
             "sprint_dauer_tage": STANDARD_SPRINT_DAUER,
             "hervorhebungen": STANDARD_HERVORHEBUNGEN,
             "erstellt": heute(),
@@ -512,9 +511,7 @@ class Projekt:
             typ = werte.get("typ", "aufgabe")
             werte["typ"] = typ
             einst = self.einstellungen()
-            nummern = [int(_ID.match(e["id"]).group(2)) for e in eintraege
-                       if _ID.match(e["id"]).group(1) == einst["kuerzel"]]
-            nummer = max([einst["naechste_nummer"], *(n + 1 for n in nummern)])
+            nummer = self._naechste_nummer(einst, eintraege)
             eid = f"{einst['kuerzel']}-{nummer}"
             sprint = werte.get("sprint", "")
             gleiche = [e["rang"] for e in eintraege
@@ -550,8 +547,65 @@ class Projekt:
             if pfad.exists():
                 raise Fehler(f"Datei {pfad.name} existiert bereits", 409)
             atomar_schreiben(pfad, dok.als_text())
-            self._projekt_feld_setzen("naechste_nummer", nummer + 1)
             return self._einzeln(eid)
+
+    def _naechste_nummer(self, einst: dict, eintraege: list[dict]) -> int:
+        """Nächste freie Nummer aus den vorhandenen Dateien (auch im Papierkorb).
+
+        Der Zähler wird bewusst nicht in projekt.md gespeichert: Beim Git-Abgleich
+        würde sonst jedes parallele Anlegen einen Konflikt in projekt.md erzeugen.
+        Ein alter Wert ``naechste_nummer`` wird weiterhin berücksichtigt.
+        """
+        k = einst["kuerzel"]
+        nummern = [int(m.group(2)) for e in eintraege if (m := _ID.match(e["id"])) and m.group(1) == k]
+        korb = self.pfad / ".papierkorb"
+        if korb.is_dir():
+            for f in korb.glob(f"{k}-*.md"):
+                m = re.match(rf"^{k}-(\d+)", f.name)
+                if m:
+                    nummern.append(int(m.group(1)))
+        return max([einst["naechste_nummer"], *(n + 1 for n in nummern)])
+
+    def id_neu_vergeben(self, alte_id: str, datei: str, verweise_in: list[str] | None = None) -> str:
+        """Eintrag in ``datei`` bekommt eine neue, freie ID (z. B. nach einem Git-Abgleich,
+        wenn auf zwei Geräten dieselbe ID vergeben wurde).
+
+        In den Dateien ``verweise_in`` (Pfade relativ zum Projekt) werden Verweise
+        ``epic``/``eltern`` auf die alte ID auf die neue umgestellt."""
+        with self._sperre:
+            pfad = (self.pfad / datei).resolve()
+            if pfad.parent != self.eintraege_ordner.resolve() or not pfad.is_file():
+                raise Fehler(f"Datei {datei} nicht gefunden", 404)
+            _, eintraege = self._alle()
+            einst = self.einstellungen()
+            probleme: list[dict] = []
+            # Die doppelte Datei taucht in _alle() nicht auf – Nummer über alle Dateien bestimmen
+            alle = [e for f in self._dateien(self.eintraege_ordner)
+                    if (e := self._eintrag_aus_datei(f, probleme)) is not None]
+            nummer = self._naechste_nummer(einst, alle)
+            neue_id = f"{einst['kuerzel']}-{nummer}"
+            dok = Dokument.lesen(pfad.read_text(encoding="utf-8"))
+            dok.setzen("id", neue_id)
+            rest = pfad.name[len(alte_id):] if pfad.name.startswith(alte_id + "-") else f"-{_slug(str(dok.get('titel') or ''))}.md"
+            ziel = pfad.with_name(neue_id + rest)
+            atomar_schreiben(ziel, dok.als_text())
+            if ziel != pfad:
+                pfad.unlink()
+            for rel in verweise_in or []:
+                vpfad = (self.pfad / rel).resolve()
+                if vpfad == ziel or vpfad.parent != self.eintraege_ordner.resolve() or not vpfad.is_file():
+                    continue
+                try:
+                    vdok = Dokument.lesen(vpfad.read_text(encoding="utf-8"))
+                except (FrontmatterFehler, UnicodeDecodeError):
+                    continue
+                geaendert = False
+                for feld in ("epic", "eltern"):
+                    if str(vdok.get(feld) or "") == alte_id:
+                        geaendert |= vdok.setzen(feld, neue_id)
+                if geaendert:
+                    atomar_schreiben(vpfad, vdok.als_text())
+            return neue_id
 
     def eintrag_aendern(self, eid: str, felder: dict[str, Any], basis: str | None = None) -> dict:
         with self._sperre:

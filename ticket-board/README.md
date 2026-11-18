@@ -16,6 +16,7 @@ Leichtgewichtiges Ticket-Tool nach dem Vorbild von Jira: **Epics, Stories, Aufga
 - **Felder:** Status, Priorität, Sprint, Epic, **Version**, **Fälligkeitsdatum** (überfällig = rot, bald fällig = gelb), Labels und eine freie Beschreibung in Markdown mit Vorschau. Checklisten lassen sich in der Vorschau abhaken, Verweise wie `WS-12` sind anklickbar.
 - **Filter und Suche:** nach Typ, Epic, Version, Hervorhebung und „Überfällig“, außerdem Volltextsuche.
 - **Änderungen von außen:** Bearbeitest du eine Datei im Texteditor, aktualisiert sich die Ansicht nach etwa 2 s. Wurde ein gerade geöffneter Eintrag inzwischen geändert, fragt die App, welche Fassung gilt.
+- **Abgleich über Git:** ein Knopf, der Änderungen sichert, Neues vom Server holt, feldweise zusammenführt und überträgt. So nutzt du dasselbe Projekt auf mehreren Rechnern oder legst die Tickets direkt neben den Code (siehe unten).
 - **Mehrere Projekte**, helles und dunkles Design, Tastenkürzel.
 
 ![Sprint-Board](docs/board.png)
@@ -56,7 +57,7 @@ Jedes Projekt bleibt ein eigenständiger Ordner. Du kannst ihn verschieben, sich
 ```
 Tickets/                          ← Arbeitsbereich
 └── Webshop/                      ← Projekt
-    ├── projekt.md                Name, Kürzel (WS), ID-Zähler, Sprintdauer, Hervorhebungen
+    ├── projekt.md                Name, Kürzel (WS), Sprintdauer, Hervorhebungen
     ├── sprints/
     │   ├── sprint-01.md          Name, Status (geplant/aktiv/abgeschlossen), Ziel, Start, Ende
     │   └── sprint-02.md
@@ -91,6 +92,7 @@ aktualisiert: 2026-11-18
 …
 ```
 
+- Die nächste freie ID wird aus den vorhandenen Dateien berechnet (auch aus dem Papierkorb), nicht gespeichert. So gibt es beim Git-Abgleich keine Konflikte in `projekt.md`.
 - Ob ein Eintrag im Backlog oder in einem Sprint liegt, steht **nur im Feld `sprint`**. Dateien werden nie verschoben, und der **Dateiname bleibt stabil**, auch wenn sich der Titel ändert. Die ID steht im Frontmatter.
 - Unteraufgaben haben zusätzlich `eltern: WS-3`.
 - **Von Hand bearbeiten ist ausdrücklich erlaubt.** Felder, die die App nicht kennt (z. B. `punkte: 5`), bleiben beim Speichern erhalten. Geschrieben werden nur Felder, die sich tatsächlich geändert haben. Dateien werden atomar gespeichert, es entstehen also nie halb geschriebene Dateien.
@@ -98,6 +100,35 @@ aktualisiert: 2026-11-18
 - Das Format ist mit Obsidian und anderen Markdown-Editoren kompatibel.
 
 ![Eintrag bearbeiten](docs/eintrag.png)
+
+## Abgleich über Git
+
+Voraussetzung ist ein installiertes [Git](https://git-scm.com/downloads). Die Anmeldung beim Server läuft über deine normale Git-Einrichtung (SSH-Schlüssel oder Git Credential Manager). Das Ticket-Board fragt nie selbst nach Passwörtern.
+
+**Einrichten (erster Rechner):** Lege auf GitHub, GitLab o. Ä. ein **leeres** Repository an. Ein Ordner auf einem Netzlaufwerk geht auch (`git init --bare D:\Sync\tickets.git`). Dann in der App **⋯ → Git-Abgleich …**, die Adresse eintragen und **Einrichten** klicken. Ohne Adresse wird das Projekt nur lokal versioniert.
+
+**Weitere Rechner:** **⋯ → Projekt aus Git holen …** und dieselbe Adresse eintragen.
+
+**Abgleichen:** Der Knopf **⟳ Abgleichen** in der Kopfzeile zeigt, wie viele Änderungen noch nicht abgeglichen sind. Ein Klick:
+
+1. committet die Änderungen im Projektordner, und **nur dort**. Liegt das Projekt in einem Code-Repository (z. B. `docs/tickets/`), bleibt dein übriger Code unangetastet.
+2. holt Neues vom Server (`git fetch`) und führt es zusammen (`git merge`).
+3. überträgt alles (`git push`).
+
+Unter **⋯ → Git-Abgleich …** lässt sich pro Gerät ein automatischer Abgleich alle 5 Minuten einschalten.
+
+**Konflikte** werden feldweise gelöst, nicht zeilenweise wie bei Git:
+
+| Situation | Ergebnis |
+|---|---|
+| Auf Gerät A Status geändert, auf Gerät B Version | beides übernommen, ohne Rückfrage |
+| Beschreibung an verschiedenen Stellen geändert | beides übernommen (`git merge-file`) |
+| `aktualisiert` auf beiden Seiten geändert | das neuere Datum gilt |
+| `rang` (Reihenfolge) auf beiden Seiten geändert | die Reihenfolge dieses Geräts gilt |
+| **dasselbe Feld** auf beiden Seiten unterschiedlich | Die App fragt: „Meine behalten“ oder „Andere übernehmen“, je Eintrag oder für alle. Bis dahin siehst du deine Fassung. „Abgleich abbrechen“ stellt den Stand vor dem Abgleich wieder her. |
+| Auf zwei Geräten dieselbe ID vergeben (zweimal WS-15) | Der lokal neu angelegte Eintrag bekommt die nächste freie Nummer. Verweise (Epic, Elternteil) werden angepasst. |
+
+Konflikte außerhalb des Ticket-Ordners löst das Ticket-Board nicht selbst. Es bricht dann ab und nennt die Dateien. Beim Einrichten legt es `.gitattributes` (`*.md text eol=lf`) an, damit Windows und andere Systeme dieselben Zeilenenden nutzen, und `.gitignore` für seine Zwischendateien.
 
 ## Tastenkürzel
 
@@ -124,9 +155,10 @@ ticket-board/
 │   ├── server.py             HTTP-Server (Standardbibliothek) und JSON-API
 │   ├── speicher.py           Projekte, Sprints, Einträge ↔ Markdown-Dateien
 │   ├── frontmatter.py        Frontmatter lesen/schreiben, unbekannte Felder bleiben erhalten
+│   ├── git_abgleich.py       Git-Abgleich, feldweises Zusammenführen, doppelte IDs
 │   └── static/               Oberfläche: HTML, CSS, JavaScript ohne Framework
 ├── beispiel/Webshop/         Beispielprojekt
-└── tests/                    pytest (Speicher, Frontmatter, Server) und Browser-Test
+└── tests/                    pytest (Speicher, Frontmatter, Server, Git mit zwei simulierten Geräten) und Browser-Test
 ```
 
 ## Entwickeln & Testen
@@ -137,7 +169,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Browser-Test (Chromium über Playwright). Er startet den Server auf einer Kopie von `beispiel/` und klickt die wichtigsten Abläufe durch:
+Browser-Test (Chromium über Playwright). Er startet den Server auf einer Kopie von `beispiel/` und klickt die wichtigsten Abläufe durch, einschließlich Git-Abgleich mit einem zweiten „Gerät“:
 
 ```bash
 npm install --no-save playwright
@@ -147,4 +179,4 @@ node tests/e2e_browser.mjs
 
 ## Ideen für später
 
-Burndown-Chart, Verknüpfungen („blockiert durch“), Vorlagen, Kommandozeile zum Anlegen (`ticket neu bug "…"`), Export als CSV/HTML, Abgleich im Team über Git.
+Burndown-Chart, Verknüpfungen („blockiert durch“), Vorlagen, Kommandozeile zum Anlegen (`ticket neu bug "…"`), Export als CSV/HTML.

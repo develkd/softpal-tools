@@ -160,6 +160,17 @@ class Dokument:
     def schluessel(self) -> list[str]:
         return list(self._zeilen)
 
+    def roh(self, schluessel: str) -> list[str] | None:
+        """Rohzeilen eines Felds (für den zeilengenauen Vergleich beim Git-Abgleich)."""
+        zeilen = self._zeilen.get(schluessel)
+        return list(zeilen) if zeilen is not None else None
+
+    def roh_setzen(self, schluessel: str, zeilen: list[str] | None) -> None:
+        if zeilen is None:
+            self._zeilen.pop(schluessel, None)
+        else:
+            self._zeilen[schluessel] = list(zeilen)
+
     def get(self, schluessel: str, standard: Any = None) -> Any:
         zeilen = self._zeilen.get(schluessel)
         if zeilen is None:

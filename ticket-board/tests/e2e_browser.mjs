@@ -2,7 +2,7 @@
 // Startet den Server auf einer Kopie von beispiel/ und klickt die wichtigsten Abläufe durch.
 //   npm install --no-save playwright && npx playwright install chromium
 //   node tests/e2e_browser.mjs
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -31,8 +31,19 @@ async function bisDatei(id, muster, ms = 5000) {
   assert.match(lesen(id), muster);
 }
 
+// Git: eigener „Server“ (bare repo) und feste Identität, unabhängig von der Konfiguration des Rechners
+const gitKonfig = join(tmp, ".gitconfig-leer");
+writeFileSync(gitKonfig, "");
+const gitEnv = {
+  ...process.env, GIT_CONFIG_GLOBAL: gitKonfig, GIT_CONFIG_NOSYSTEM: "1",
+  GIT_AUTHOR_NAME: "E2E", GIT_AUTHOR_EMAIL: "e2e@example.com", GIT_COMMITTER_NAME: "E2E", GIT_COMMITTER_EMAIL: "e2e@example.com",
+};
+const gitServer = mkdtempSync(join(tmpdir(), "ticket-board-e2e-server-"));
+const sh = (cwd, ...args) => execFileSync("git", args, { cwd, env: gitEnv, encoding: "utf8" });
+sh(gitServer, "init", "-q", "--bare", "-b", "main");
+
 const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
-const server = spawn(python, ["-u", "-m", "ticket_board", tmp, "--port", "0", "--kein-browser"], { cwd: wurzel });
+const server = spawn(python, ["-u", "-m", "ticket_board", tmp, "--port", "0", "--kein-browser"], { cwd: wurzel, env: gitEnv });
 const url = await new Promise((ok, fehler) => {
   let puffer = "";
   server.stdout.on("data", (d) => {
@@ -179,6 +190,51 @@ try {
     await seite.waitForSelector(".probleme >> text=kaputt.md");
   });
 
+  await schritt("Git-Abgleich einrichten", async () => {
+    await seite.keyboard.press("b");
+    await seite.locator("#menue-knopf").click();
+    await seite.locator('[data-aktion="git"]').click();
+    await seite.fill('#dialog-klein input[name="url"]', gitServer);
+    await seite.locator("#dialog-klein button[type=submit]").click();
+    await seite.waitForSelector("#git-knopf:not([hidden])");
+    assert.match(sh(gitServer, "log", "--format=%s", "main"), /Ticket-Board: Projekt Webshop/);
+  });
+
+  await schritt("Änderung zählen und per Knopf abgleichen", async () => {
+    const form = seite.locator('form.schnell[data-sprint=""]');
+    await form.locator("input").fill("Über Git abgeglichen");
+    await form.locator("input").press("Enter");
+    await seite.waitForSelector("#git-zahl:not([hidden])", { timeout: 6000 });
+    await seite.locator("#git-knopf").click();
+    await seite.waitForFunction(() => document.querySelector("#git-zahl").hidden && !document.querySelector("#git-knopf").disabled, null, { timeout: 15000 });
+    assert.match(sh(gitServer, "log", "-1", "--format=%s", "main"), /WS-17/);
+  });
+
+  await schritt("Konflikt mit anderem Gerät auflösen", async () => {
+    // „Anderes Gerät“: klonen, Titel von WS-11 ändern, pushen
+    const anderes = mkdtempSync(join(tmpdir(), "ticket-board-e2e-b-"));
+    sh(anderes, "clone", "-q", gitServer, "b");
+    const b = join(anderes, "b");
+    const dateiB = join(b, "eintraege", readdirSync(join(b, "eintraege")).find((n) => n.startsWith("WS-11-")));
+    writeFileSync(dateiB, readFileSync(dateiB, "utf8").replace(/titel: .*\n/, "titel: Titel vom anderen Gerät\n").replace(/prioritaet: .*\n/, "prioritaet: hoch\n"));
+    sh(b, "commit", "-q", "-am", "Anderes Gerät");
+    sh(b, "push", "-q");
+    rmSync(anderes, { recursive: true, force: true });
+    // Hier denselben Titel anders ändern
+    await seite.locator('.zeile[data-id="WS-11"]').click();
+    await seite.fill("#f-titel", "Titel von hier");
+    await seite.locator("#dialog button[type=submit]").click();
+    await seite.waitForSelector("#dialog[open]", { state: "detached" });
+    await seite.locator("#git-knopf").click();
+    await seite.waitForSelector("#dialog-klein .konflikt", { timeout: 15000 });
+    assert.match(await seite.locator("#dialog-klein .konflikt").innerText(), /Titel von hier[\s\S]*Titel vom anderen Gerät/);
+    await seite.locator('#dialog-klein .konflikt [data-wert^="fremde|"]').click();
+    await seite.waitForFunction(() => !document.querySelector("#git-knopf").classList.contains("warnung") && !document.querySelector("#git-knopf").disabled, null, { timeout: 15000 });
+    await bisDatei("WS-11", /titel: Titel vom anderen Gerät\n/);
+    await bisDatei("WS-11", /prioritaet: hoch\n/);
+    assert.match(sh(gitServer, "log", "-1", "--format=%s", "main"), /Merge/);
+  });
+
   await schritt("Neues Projekt anlegen und wechseln", async () => {
     await seite.locator("#menue-knopf").click();
     await seite.locator('[data-aktion="projekt-neu"]').click();
@@ -206,4 +262,5 @@ try {
   await browser.close();
   server.kill();
   rmSync(tmp, { recursive: true, force: true });
+  rmSync(gitServer, { recursive: true, force: true });
 }

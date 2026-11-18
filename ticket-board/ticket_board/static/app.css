@@ -282,6 +282,7 @@ dialog {
 }
 dialog::backdrop { background: rgba(9, 30, 66, .45); }
 #dialog-klein { width: min(480px, calc(100vw - 32px)); }
+#dialog-klein:has(.konflikt), #dialog-klein:has(.git-tabelle) { width: min(780px, calc(100vw - 32px)); }
 .dlg { display: flex; flex-direction: column; max-height: calc(100vh - 50px); }
 .dlg-kopf {
   display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--linie);
@@ -349,6 +350,26 @@ dialog::backdrop { background: rgba(9, 30, 66, .45); }
   max-width: calc(100vw - 32px);
 }
 .meldung.fehler { background: var(--gefahr); color: #fff; }
+.meldung { white-space: pre-line; }
+
+/* Git-Abgleich ------------------------------------------------------------ */
+#git-knopf .zaehler { background: var(--akzent); }
+#git-knopf.warnung { border-color: var(--warnung); color: var(--warnung); }
+#git-knopf.warnung .zaehler { background: var(--warnung); }
+#git-knopf.laeuft span[aria-hidden] { display: inline-block; animation: drehen 1s linear infinite; }
+@keyframes drehen { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #git-knopf.laeuft span[aria-hidden] { animation: none; } }
+.git-tabelle { width: 100%; border-collapse: collapse; font-size: 13px; }
+.git-tabelle th { text-align: left; color: var(--text-2); font-weight: 600; padding: 4px 8px 4px 0; vertical-align: top; white-space: nowrap; }
+.git-tabelle td { padding: 4px 0; word-break: break-all; }
+.konflikt { border: 1px solid var(--linie); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.konflikt h3 { margin: 0 0 8px; font-size: 14px; }
+.konflikt table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; table-layout: fixed; }
+.konflikt th, .konflikt td { border: 1px solid var(--linie); padding: 4px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.konflikt th { background: var(--flaeche-2); }
+.konflikt pre { margin: 0; white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
+.konflikt .knoepfe { display: flex; gap: 6px; flex-wrap: wrap; }
+.fehler-text { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; background: var(--flaeche-2); padding: 8px; border-radius: 4px; max-height: 300px; overflow: auto; }
 
 @media (max-width: 860px) {
   .eintrag-raster { grid-template-columns: 1fr; }
