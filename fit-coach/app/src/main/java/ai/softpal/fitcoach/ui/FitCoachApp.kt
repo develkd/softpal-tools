@@ -37,7 +37,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-enum class Tab(@StringRes val label: Int, @DrawableRes val icon: Int?) {
+enum class Tab(@param:StringRes val label: Int, @param:DrawableRes val icon: Int?) {
     DASHBOARD(R.string.tab_dashboard, null),
     FOOD(R.string.tab_food, R.drawable.ic_food),
     SPORT(R.string.tab_sport, R.drawable.ic_sport),
