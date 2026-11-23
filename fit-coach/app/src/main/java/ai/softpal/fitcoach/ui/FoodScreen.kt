@@ -390,6 +390,7 @@ private fun foodLabel(food: Food, factor: Double, lang: Lang): String {
 /** Mahlzeit von Hand eintragen, mit Vorschlägen aus der Lebensmittel-Tabelle. */
 @Composable
 private fun ManualMealDialog(onDismiss: () -> Unit, onSave: (MealDraft) -> Unit) {
+    val lang = currentLang()
     var name by rememberSaveable { mutableStateOf("") }
     var kcal by rememberSaveable { mutableStateOf("") }
     val matches = if (name.length >= 2) FoodDatabase.search(name, limit = 4) else emptyList()
@@ -409,7 +410,7 @@ private fun ManualMealDialog(onDismiss: () -> Unit, onSave: (MealDraft) -> Unit)
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable { name = food.name.local(); kcal = food.portionKcal.toString() }
+                            .clickable { name = food.name[lang]; kcal = food.portionKcal.toString() }
                             .padding(vertical = 6.dp, horizontal = 4.dp),
                     )
                 }
