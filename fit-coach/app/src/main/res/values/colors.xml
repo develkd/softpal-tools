@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- softpal-Branding: Schwarz auf Weiß -->
+    <color name="softpal_black">#000000</color>
+    <color name="softpal_white">#FFFFFF</color>
+    <color name="window_background">#FFFFFF</color>
+    <color name="ic_launcher_background">@color/softpal_white</color>
+    <color name="ic_launcher_foreground">@color/softpal_black</color>
+</resources>
