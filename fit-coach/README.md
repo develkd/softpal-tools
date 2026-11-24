@@ -84,3 +84,17 @@ cd fit-coach
 **APK:** `.github/workflows/fit-coach.yml` baut bei jeder Änderung unter `fit-coach/` Tests und Debug-APK. Das APK liegt
 als Artefakt `fit-coach-debug-apk` am Workflow-Lauf und kann direkt aufs Handy geladen werden (Installation aus
 unbekannten Quellen erlauben).
+
+## Release
+
+`.github/workflows/fit-coach-release.yml` baut die APK und veröffentlicht sie als GitHub-Release
+(`FitCoach-<Version>.apk` plus SHA-256-Prüfsumme, Release-Notizen aus `release-notes.md`).
+
+1. `versionName` (und `versionCode`) in `app/build.gradle.kts` erhöhen und per Pull Request nach `develop` bringen.
+2. Release auslösen: Tag `fit-coach-v<versionName>` pushen **oder** unter *Actions → FitCoach Release → Run workflow*
+   die Version eintragen (der Tag wird dann angelegt). Passt die Version nicht zu `versionName`, bricht der Lauf ab.
+
+**Signatur:** Sind die Repository-Secrets `FITCOACH_KEYSTORE_BASE64` (Keystore als Base64), `FITCOACH_KEYSTORE_PASSWORD`,
+`FITCOACH_KEY_ALIAS` und `FITCOACH_KEY_PASSWORD` gesetzt, wird ein Release-APK mit diesem festen Schlüssel signiert –
+neue Versionen lassen sich dann über alte installieren, die Daten bleiben erhalten. Ohne Secrets wird mit einem
+Debug-Schlüssel signiert (der Release-Text weist darauf hin).
