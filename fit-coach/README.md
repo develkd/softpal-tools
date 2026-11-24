@@ -21,10 +21,13 @@ vorgemacht bekommen. Die App gibt **ausschließlich positive, ermutigende Hinwei
 1. **Auf dem Gerät (Standard, offline):** Google ML Kit erkennt Bildinhalte (z. B. „Pizza“, „Banana“, „Bread“). Die App
    ordnet sie Lebensmitteln aus der eingebauten Tabelle zu und schlägt Portionen vor; über die Suche lässt sich alles
    ergänzen. Das Foto verlässt das Gerät nicht. Die Erkennung ist allgemein gehalten – bei gemischten Tellern hilft die Suche.
-2. **KI-Analyse (optional, genauer):** Mit einem eigenen API-Schlüssel von Anthropic (Einstellungen → „KI-Fotoanalyse“)
-   wird das Foto an die **Claude API** (`claude-opus-5-5`) gesendet. Claude erkennt jedes Lebensmittel, schätzt Gramm und
-   kcal und antwortet als strukturiertes JSON; das Ergebnis wird übernommen und kann vor dem Speichern angepasst werden.
-   Abgelehnte Anfragen werden serverseitig an ein anderes Modell weitergereicht (`fallbacks: "default"`).
+2. **ChatGPT-Analyse (optional, genauer):** Mit einem eigenen OpenAI-API-Schlüssel (Einstellungen →
+   „ChatGPT-Fotoanalyse“) wird das Foto über die OpenAI **Responses API** (`POST /v1/responses`) an ChatGPT gesendet –
+   standardmäßig Modell `gpt-5.5`, in den Einstellungen änderbar (z. B. ein günstigeres Modell). ChatGPT erkennt jedes
+   Lebensmittel, schätzt Gramm und kcal und antwortet als JSON nach festem Schema (Structured Outputs, `strict`); das
+   Ergebnis wird übernommen und kann vor dem Speichern angepasst werden. Die Anfrage setzt `store: false`. Jede Analyse
+   wird über das OpenAI-Konto des Schlüssels abgerechnet. Fehler (ungültiger Schlüssel, Guthaben aufgebraucht, Modell
+   nicht verfügbar, überlastet, offline) werden freundlich erklärt.
    Ohne Internet oder bei Problemen bleibt Stufe 1 verfügbar.
 
 ### Berechnung
@@ -42,7 +45,7 @@ Alle Werte sind Richtwerte für den Alltag, keine medizinische Beratung.
 Alle Texte sind ermutigend formuliert – statt „zu viel gegessen“ heißt es z. B. „Heute hast du ordentlich Energie
 getankt – perfekt für eine kleine Bewegungseinheit!“. Es gibt keine Warnfarben; über dem Ziel bleibt der Ring einfach
 voll („Ziel erreicht 🎉“). Unit-Tests prüfen alle Hinweise und Oberflächentexte in beiden Sprachen gegen eine Liste
-negativer Begriffe. Auch die KI wird angewiesen, nur positiv zu formulieren.
+negativer Begriffe. Auch ChatGPT wird angewiesen, nur positiv zu formulieren.
 
 ## Projektstruktur
 
@@ -53,17 +56,17 @@ fit-coach/
 │   ├── Stats              Tageswerte, Wochenvergleich, Gewichtsverlauf, Serie
 │   ├── Encouragement      positive Hinweise (DE/TR)
 │   ├── exercise/          Übungen, Keyframe-Posen der Strichfiguren, Tagesvorschläge
-│   └── food/              Lebensmittel-Tabelle, Label-Zuordnung, Claude-Fotoanalyse
+│   └── food/              Lebensmittel-Tabelle, Label-Zuordnung, ChatGPT-Fotoanalyse (OkHttp)
 └── app/    Android-App (Kotlin, Jetpack Compose, Material 3)
     ├── data/              JSON-Speicher (privater App-Speicher), Foto laden, ML Kit
     └── ui/                Screens, Diagramme (Canvas), Strichfiguren-Animation
 ```
 
 - `minSdk` 26 (Android 8.0), `targetSdk`/`compileSdk` 35
-- Berechtigung: nur `INTERNET` (für die optionale KI-Analyse). Die Kamera läuft über die System-Kamera-App.
+- Berechtigung: nur `INTERNET` (für die optionale ChatGPT-Analyse). Die Kamera läuft über die System-Kamera-App.
 - Daten: eine JSON-Datei im privaten App-Speicher, kein Konto, keine Cloud; App-Backup ist deaktiviert, damit der
-  API-Schlüssel das Gerät nicht verlässt.
-- Abhängigkeiten: AndroidX/Compose und kotlinx.serialization (Apache-2.0), Anthropic Java SDK (MIT),
+  OpenAI-API-Schlüssel das Gerät nicht verlässt.
+- Abhängigkeiten: AndroidX/Compose, kotlinx.serialization und OkHttp (alle Apache-2.0),
   ML Kit Image Labeling (Google ML Kit Terms of Service, Modell in der App gebündelt).
 
 ## Bauen & Testen
@@ -72,7 +75,7 @@ Voraussetzung: JDK 17+ und Android SDK (Android Studio).
 
 ```bash
 cd fit-coach
-./gradlew :core:test                # Berechnung, Übungen, Lebensmittel, positive Texte (reines JVM)
+./gradlew :core:test                # Berechnung, Übungen, Lebensmittel, positive Texte, ChatGPT-Anbindung gegen Testserver (reines JVM)
 ./gradlew :app:testDebugUnitTest    # Oberflächentexte DE/TR vollständig und positiv
 ./gradlew :app:assembleDebug        # APK: app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:installDebug         # auf angeschlossenes Handy installieren

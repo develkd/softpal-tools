@@ -9,7 +9,7 @@ composeBom = "2025.06.00"
 mlkitImageLabeling = "17.0.9"
 coroutines = "1.10.2"
 serialization = "1.9.0"
-anthropic = "3.3.0"
+okhttp = "4.12.0"
 junit = "4.13.2"
 
 [libraries]
@@ -28,7 +28,8 @@ mlkit-image-labeling = { group = "com.google.mlkit", name = "image-labeling", ve
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
-anthropic-java = { group = "com.anthropic", name = "anthropic-java", version.ref = "anthropic" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

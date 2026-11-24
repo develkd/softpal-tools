@@ -33,5 +33,5 @@ data class FoodAnalysis(val items: List<AnalyzedItem>, val note: String = "") {
 
 /** Fehler der KI-Analyse, nach Ursache unterschieden (für passende Hinweise in der App). */
 class FoodAnalysisException(val reason: Reason, cause: Throwable? = null) : Exception(reason.name, cause) {
-    enum class Reason { INVALID_KEY, BUSY, NETWORK, DECLINED, UNREADABLE, OTHER }
+    enum class Reason { INVALID_KEY, QUOTA, MODEL, BUSY, NETWORK, DECLINED, UNREADABLE, OTHER }
 }

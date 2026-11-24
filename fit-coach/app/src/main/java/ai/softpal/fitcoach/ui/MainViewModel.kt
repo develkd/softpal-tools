@@ -64,6 +64,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val data: StateFlow<AppData> = repo.data
     val apiKey: StateFlow<String> = repo.apiKey
+    val model: StateFlow<String> = repo.model
 
     private val _today = MutableStateFlow(LocalDate.now())
     val today: StateFlow<LocalDate> = _today.asStateFlow()
@@ -154,6 +155,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Einstellungen ----------
 
     fun setApiKey(key: String) = repo.setApiKey(key)
+    fun setModel(model: String) = repo.setModel(model)
 
     // ---------- Foto ----------
 
@@ -184,7 +186,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _photo.value = state
             if (key.isBlank()) return@launch
             state = try {
-                state.copy(aiRunning = false, ai = PhotoAnalysis.analyzeWithClaude(bitmap, key, lang))
+                state.copy(aiRunning = false, ai = PhotoAnalysis.analyzeWithChatGpt(bitmap, key, repo.model.value, lang))
             } catch (e: FoodAnalysisException) {
                 Log.w(TAG, "KI-Analyse: ${e.reason}", e)
                 state.copy(aiRunning = false, aiError = e.reason)

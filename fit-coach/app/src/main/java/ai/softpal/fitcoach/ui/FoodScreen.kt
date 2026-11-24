@@ -324,6 +324,8 @@ private fun AiSection(state: PhotoState.Ready) {
                 stringResource(
                     when (state.aiError) {
                         Reason.INVALID_KEY -> R.string.ai_error_key
+                        Reason.QUOTA -> R.string.ai_error_quota
+                        Reason.MODEL -> R.string.ai_error_model
                         Reason.BUSY -> R.string.ai_error_busy
                         Reason.NETWORK -> R.string.ai_error_network
                         else -> R.string.ai_error_other

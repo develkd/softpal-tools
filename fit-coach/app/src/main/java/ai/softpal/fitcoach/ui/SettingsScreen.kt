@@ -2,6 +2,7 @@ package ai.softpal.fitcoach.ui
 
 import ai.softpal.fitcoach.R
 import ai.softpal.fitcoach.core.Profile
+import ai.softpal.fitcoach.core.food.ChatGptFoodAnalyzer
 import ai.softpal.fitcoach.ui.components.SectionCard
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,7 +33,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SettingsScreen(vm: MainViewModel, profile: Profile) {
     val savedKey by vm.apiKey.collectAsStateWithLifecycle()
+    val savedModel by vm.model.collectAsStateWithLifecycle()
     var key by rememberSaveable(savedKey) { mutableStateOf(savedKey) }
+    var model by rememberSaveable(savedModel) { mutableStateOf(savedModel) }
 
     Column(Modifier.verticalScroll(rememberScrollState()).imePadding()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -45,13 +48,23 @@ fun SettingsScreen(vm: MainViewModel, profile: Profile) {
                 OutlinedTextField(
                     value = key, onValueChange = { key = it.trim() }, singleLine = true,
                     label = { Text(stringResource(R.string.api_key)) },
-                    placeholder = { Text("sk-ant-…") },
+                    placeholder = { Text("sk-…") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                OutlinedTextField(
+                    value = model, onValueChange = { model = it.trim() }, singleLine = true,
+                    label = { Text(stringResource(R.string.ai_model)) },
+                    placeholder = { Text(ChatGptFoodAnalyzer.DEFAULT_MODEL) },
+                    supportingText = { Text(stringResource(R.string.ai_model_hint, ChatGptFoodAnalyzer.DEFAULT_MODEL)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { vm.setApiKey(key) }, enabled = key != savedKey) { Text(stringResource(R.string.save)) }
+                    FilledTonalButton(
+                        onClick = { vm.setApiKey(key); vm.setModel(model) },
+                        enabled = key != savedKey || model != savedModel,
+                    ) { Text(stringResource(R.string.save)) }
                     if (savedKey.isNotBlank()) {
                         TextButton(onClick = { key = ""; vm.setApiKey("") }) { Text(stringResource(R.string.remove_key)) }
                     }

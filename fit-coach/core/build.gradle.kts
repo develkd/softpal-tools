@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Reine Kotlin/JVM-Bibliothek ohne Android-Abhängigkeiten:
-// Kalorienbedarf, Übungen + Animations-Posen, Lebensmittel, positive Hinweise, KI-Fotoanalyse.
+// Kalorienbedarf, Übungen + Animations-Posen, Lebensmittel, positive Hinweise, KI-Fotoanalyse (ChatGPT).
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -20,6 +20,7 @@ kotlin {
 
 dependencies {
     api(libs.kotlinx.serialization.json)
-    implementation(libs.anthropic.java)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }

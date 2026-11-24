@@ -14,7 +14,7 @@ import java.io.File
 
 /**
  * Speichert alle Daten als JSON-Datei im privaten App-Speicher (keine Cloud, kein Konto).
- * Der API-Schlüssel für die KI-Analyse liegt getrennt in privaten SharedPreferences.
+ * Der OpenAI-API-Schlüssel für die KI-Analyse (ChatGPT) liegt getrennt in privaten SharedPreferences.
  */
 class Repository(context: Context) {
 
@@ -27,6 +27,16 @@ class Repository(context: Context) {
 
     private val _apiKey = MutableStateFlow(secrets.getString(KEY_API, null).orEmpty())
     val apiKey: StateFlow<String> = _apiKey.asStateFlow()
+
+    private val _model = MutableStateFlow(secrets.getString(KEY_MODEL, null).orEmpty())
+
+    /** Gewähltes OpenAI-Modell; leer = Standardmodell. */
+    val model: StateFlow<String> = _model.asStateFlow()
+
+    init {
+        // Schlüssel aus der früheren Claude-Anbindung entfernen
+        if (secrets.contains(KEY_OLD_ANTHROPIC)) secrets.edit().remove(KEY_OLD_ANTHROPIC).apply()
+    }
 
     private fun load(): AppData = try {
         if (file.exists()) AppData.fromJson(file.readText()) else AppData()
@@ -55,8 +65,16 @@ class Repository(context: Context) {
         _apiKey.value = trimmed
     }
 
+    fun setModel(model: String) {
+        val trimmed = model.trim()
+        secrets.edit().putString(KEY_MODEL, trimmed).apply()
+        _model.value = trimmed
+    }
+
     private companion object {
         const val TAG = "FitCoach"
-        const val KEY_API = "anthropic_api_key"
+        const val KEY_API = "openai_api_key"
+        const val KEY_MODEL = "openai_model"
+        const val KEY_OLD_ANTHROPIC = "anthropic_api_key"
     }
 }

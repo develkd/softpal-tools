@@ -1,7 +1,7 @@
 package ai.softpal.fitcoach.data
 
 import ai.softpal.fitcoach.core.Lang
-import ai.softpal.fitcoach.core.food.ClaudeFoodAnalyzer
+import ai.softpal.fitcoach.core.food.ChatGptFoodAnalyzer
 import ai.softpal.fitcoach.core.food.FoodAnalysis
 import ai.softpal.fitcoach.core.food.ImageLabel
 import android.content.Context
@@ -19,10 +19,10 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 
-/** Foto laden, auf dem Gerät erkennen (ML Kit) und optional per Claude analysieren. */
+/** Foto laden, auf dem Gerät erkennen (ML Kit) und optional per ChatGPT (OpenAI API) analysieren. */
 object PhotoAnalysis {
 
-    /** Längste Bildkante für Erkennung und Upload (Claude verkleinert größere Bilder ohnehin). */
+    /** Längste Bildkante für Erkennung und Upload (größere Bilder bringen keinen Genauigkeitsgewinn). */
     private const val MAX_SIDE = 1568
 
     suspend fun loadBitmap(context: Context, uri: Uri): Bitmap = withContext(Dispatchers.IO) {
@@ -59,12 +59,12 @@ object PhotoAnalysis {
         }
     }
 
-    /** Genaue Analyse über die Claude API (nur mit hinterlegtem API-Schlüssel). */
-    suspend fun analyzeWithClaude(bitmap: Bitmap, apiKey: String, lang: Lang): FoodAnalysis = withContext(Dispatchers.IO) {
+    /** Genaue Analyse über ChatGPT / OpenAI API (nur mit hinterlegtem API-Schlüssel). */
+    suspend fun analyzeWithChatGpt(bitmap: Bitmap, apiKey: String, model: String, lang: Lang): FoodAnalysis = withContext(Dispatchers.IO) {
         val jpeg = ByteArrayOutputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             out.toByteArray()
         }
-        ClaudeFoodAnalyzer(apiKey).use { it.analyze(jpeg, lang) }
+        ChatGptFoodAnalyzer(apiKey, model).analyze(jpeg, lang)
     }
 }

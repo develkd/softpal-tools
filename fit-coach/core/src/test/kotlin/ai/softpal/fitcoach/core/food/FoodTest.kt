@@ -1,6 +1,5 @@
 package ai.softpal.fitcoach.core.food
 
-import ai.softpal.fitcoach.core.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,16 +48,5 @@ class FoodTest {
         assertEquals(0, result.items[2].kcal)
         assertEquals(440, result.totalKcal)
         assertEquals("Guten Appetit!", result.note)
-    }
-
-    @Test fun `Anfrage an Claude enthaelt Bild, Schema und Fallback`() {
-        ClaudeFoodAnalyzer("sk-test").use { analyzer ->
-            val params = analyzer.buildParams(byteArrayOf(1, 2, 3), Lang.TR)
-            assertEquals(ClaudeFoodAnalyzer.MODEL, params.model().asString())
-            assertTrue(params._additionalBodyProperties().containsKey("fallbacks"))
-            assertTrue(params.system().isPresent)
-            assertEquals(2, params.messages().first().content().asContentBlockParams().size)
-        }
-        assertTrue(ClaudeFoodAnalyzer.systemPrompt(Lang.TR).contains("Türkisch"))
     }
 }
