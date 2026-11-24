@@ -21,8 +21,23 @@ android {
         resourceConfigurations += listOf("de", "tr")
     }
 
+    // Release-Signatur nur, wenn der Schlüssel per Umgebungsvariable bereitsteht (CI-Secrets, siehe README).
+    // Ein fester Schlüssel sorgt dafür, dass neue Versionen über die alte installiert werden können.
+    val releaseKeystore = System.getenv("FITCOACH_KEYSTORE_FILE")?.let(::file)?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("FITCOACH_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("FITCOACH_KEY_ALIAS")
+                keyPassword = System.getenv("FITCOACH_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

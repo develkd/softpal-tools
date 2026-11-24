@@ -1,0 +1,111 @@
+name: FitCoach Release
+
+# Veröffentlicht die FitCoach-APK als GitHub-Release.
+# - Tag "fit-coach-v<Version>" pushen (Version = versionName in fit-coach/app/build.gradle.kts) oder
+# - manuell über "Run workflow" mit der Version starten (der Tag wird dann angelegt).
+# Bei Pull Requests läuft alles außer dem Veröffentlichen (Probelauf).
+on:
+  push:
+    tags:
+      - 'fit-coach-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (muss versionName entsprechen), z. B. 1.0.0'
+        required: true
+  pull_request:
+    paths:
+      - '.github/workflows/fit-coach-release.yml'
+      - 'fit-coach/release-notes.md'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fit-coach
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version bestimmen und prüfen
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          APP_VERSION=$(sed -nE 's/^ *versionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          case "$GITHUB_EVENT_NAME" in
+            push) VERSION="${GITHUB_REF_NAME#fit-coach-v}" ;;
+            workflow_dispatch) VERSION="${INPUT_VERSION#v}" ;;
+            *) VERSION="$APP_VERSION" ;;
+          esac
+          if [ "$VERSION" != "$APP_VERSION" ]; then
+            echo "::error::Version $VERSION passt nicht zu versionName $APP_VERSION in app/build.gradle.kts"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=fit-coach-v$VERSION" >> "$GITHUB_ENV"
+
+      - name: Unit-Tests
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest
+
+      - name: APK bauen
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FITCOACH_KEYSTORE_BASE64 }}
+          FITCOACH_KEYSTORE_PASSWORD: ${{ secrets.FITCOACH_KEYSTORE_PASSWORD }}
+          FITCOACH_KEY_ALIAS: ${{ secrets.FITCOACH_KEY_ALIAS }}
+          FITCOACH_KEY_PASSWORD: ${{ secrets.FITCOACH_KEY_PASSWORD }}
+        run: |
+          mkdir -p dist
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fitcoach.jks"
+            export FITCOACH_KEYSTORE_FILE="$RUNNER_TEMP/fitcoach.jks"
+            ./gradlew --no-daemon :app:assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "dist/FitCoach-$VERSION.apk"
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Kein Release-Schlüssel hinterlegt – APK wird mit dem Debug-Schlüssel signiert."
+            ./gradlew --no-daemon :app:assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "dist/FitCoach-$VERSION.apk"
+            echo "SIGNING=debug" >> "$GITHUB_ENV"
+          fi
+          sha256sum "dist/FitCoach-$VERSION.apk" | tee "dist/FitCoach-$VERSION.apk.sha256"
+
+      - name: Release-Notizen zusammenstellen
+        run: |
+          {
+            cat release-notes.md
+            echo
+            if [ "$SIGNING" = "debug" ]; then
+              echo "> **Hinweis:** Diese APK ist mit einem Debug-Schlüssel signiert. Vor dem Installieren einer"
+              echo "> späteren Version muss diese ggf. deinstalliert werden (die eingetragenen Daten gehen dabei verloren)."
+              echo
+            fi
+            echo "SHA-256: \`$(cut -d' ' -f1 "dist/FitCoach-$VERSION.apk.sha256")\`"
+          } > dist/notes.md
+          cat dist/notes.md
+
+      - name: Probelauf – APK hochladen
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fit-coach-release-probe
+          path: fit-coach/dist/
+          if-no-files-found: error
+
+      - name: Release veröffentlichen
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" "dist/FitCoach-$VERSION.apk" "dist/FitCoach-$VERSION.apk.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "FitCoach $VERSION" \
+            --notes-file dist/notes.md
